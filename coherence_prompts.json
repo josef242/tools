@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "description": "Narrative prompt bank for coherence_sweep. Each prompt is designed to elicit named characters, a setting, and ongoing continuity — the raw material our entity / repetition / diversity metrics measure. Change this file and your metric history becomes non-comparable, so version it carefully.",
+  "prompts": [
+    {
+      "id": "fantasy_third",
+      "title": "Fantasy, third person",
+      "text": "Elena pushed open the door of the old stone tavern and stepped inside. The innkeeper looked up from behind the counter and"
+    },
+    {
+      "id": "scifi_first",
+      "title": "Science fiction, first person",
+      "text": "The first time I saw the signal come through the array, I was alone on the graveyard shift. Dr. Ramos had gone home three hours earlier, and the only other person in the building was"
+    },
+    {
+      "id": "dialogue_two",
+      "title": "Two-character dialogue",
+      "text": "\"You can't be serious,\" Marcus said, setting his coffee down hard enough to rattle the saucer.\n\nJames shook his head. \"I wouldn't joke about something like this. Not with her.\"\n\n\"Then tell me exactly what she said.\"\n\nJames leaned back and"
+    },
+    {
+      "id": "mystery_opening",
+      "title": "Mystery, opening scene",
+      "text": "Detective Sarah Chen had seen three bodies in her first two years on the job, but none of them had been arranged like this. The victim, a man in his mid-forties wearing a grey suit, lay face-up on the polished wooden floor of the library. Around him, in a rough circle, someone had placed"
+    },
+    {
+      "id": "historical_grounded",
+      "title": "Historical, grounded",
+      "text": "In the spring of 1847, a farmer named Thomas Whitfield left the village of Ashcombe with nothing but a leather satchel and a letter of introduction addressed to his cousin in Liverpool. The roads were poor, and by the end of the first day he had"
+    },
+    {
+      "id": "contemporary_character",
+      "title": "Contemporary, character-driven",
+      "text": "My sister Rebecca called me three times before I picked up, and when I finally did, her voice sounded strange — not upset exactly, but careful, like she was reading from a script she had rehearsed. \"I need you to come over,\" she said. \"Tonight if you can. It's about Dad.\"\n\nI told her"
+    },
+    {
+      "id": "horror_atmospheric",
+      "title": "Horror, atmospheric",
+      "text": "The house on Blackwood Lane had been empty for eleven years when Daniel finally agreed to clear it out. His grandmother had left it to him in her will, and his wife Anna kept reminding him that the property taxes weren't going to pay themselves. He arrived on a Tuesday morning, unlocked the front door, and found that"
+    },
+    {
+      "id": "coming_of_age",
+      "title": "Coming-of-age",
+      "text": "The summer I turned fifteen, my father took a job that meant moving our family from Chicago to a small town in Montana where he said the air was cleaner and the schools were better. I didn't want to go. I had a best friend named Kyle and a girlfriend named Emma, and I was certain that leaving them behind would"
+    },
+    {
+      "id": "epistolary_diary",
+      "title": "Epistolary / diary",
+      "text": "March 14th\n\nI haven't written in this journal for almost two weeks, and the reason is that I didn't know how to describe what happened on the night of the third. Now that some time has passed, I think I can try. It began when Henrietta came to my room just after"
+    },
+    {
+      "id": "action_physical",
+      "title": "Action / physical tension",
+      "text": "Kira pressed herself flat against the corridor wall and tried to slow her breathing. The footsteps she had been following for the last ten minutes had stopped, which meant one of two things: either the man she was tracking had reached his destination, or he had realized he was being followed. She counted to thirty, then"
+    }
+  ]
+}
