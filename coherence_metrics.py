@@ -504,29 +504,29 @@ def sentence_entity_overlap(text: str) -> float:
 # buzzy, dwarven, midafternoon, ...) while still flagging the model's genuine
 # hallucinations (arouseing, cordill, flornate, verbation, ...).
 
-_KNOWN_WORDS = None  # lazy singleton (frozenset or False)
+_KNOWN_WORDS = None  # lazy singleton (frozenset)
 
 
 def _get_known_words():
     """Lazy-load the English wordfreq 'large' list as a frozenset for O(1)
-    membership tests. Returns None if wordfreq can't be imported."""
+    membership tests. Raises ModuleNotFoundError if wordfreq is missing."""
     global _KNOWN_WORDS
-    if _KNOWN_WORDS is False:
-        return None
     if _KNOWN_WORDS is not None:
         return _KNOWN_WORDS
     try:
         import wordfreq
-        # top_n with a very large N returns the entire 'large' list.
-        words = wordfreq.top_n_list("en", 2_000_000, wordlist="large")
-        _KNOWN_WORDS = frozenset(words)
-        return _KNOWN_WORDS
-    except Exception:
-        _KNOWN_WORDS = False
-        return None
+    except ImportError as e:
+        raise ModuleNotFoundError(
+            "coherence_metrics.nonword_rate requires the 'wordfreq' package. "
+            "Install it with: pip install wordfreq"
+        ) from e
+    # top_n with a very large N returns the entire 'large' list.
+    words = wordfreq.top_n_list("en", 2_000_000, wordlist="large")
+    _KNOWN_WORDS = frozenset(words)
+    return _KNOWN_WORDS
 
 
-def nonword_rate(text: str) -> Optional[float]:
+def nonword_rate(text: str) -> float:
     """Fraction of alphabetic word tokens that are NOT in the English
     dictionary.
 
@@ -540,11 +540,10 @@ def nonword_rate(text: str) -> Optional[float]:
       - Drops proper-noun candidates (any word that appears capitalized
         mid-sentence at least once in `text`)
       - Drops 1–2 letter words (mostly contraction fragments)
-    Returns None if wordfreq is not installed.
+
+    Raises ModuleNotFoundError if wordfreq is not installed.
     """
     known = _get_known_words()
-    if known is None:
-        return None
 
     # Proper-noun exclusion set — any confirmed entity (lowercased) should
     # not count as a made-up word even if it's not in the dict.
