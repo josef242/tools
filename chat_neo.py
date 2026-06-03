@@ -448,6 +448,97 @@ class CustomModelWrapper(ModelWrapper):
         self.context_len = context_len
         self.device = next(model.parameters()).device
 
+        # ---- Cross-turn KV-cache prefix reuse -----------------------------
+        # Persistent policy so successive generations can reuse the KV cache for
+        # any shared token prefix instead of re-prefilling the whole prompt
+        # every turn. Reuse is only SOUND for pure-attention checkpoints:
+        #   * GDN / linear-attention layers keep recurrent state outside the
+        #     KV cache, and
+        #   * Block-AttnRes keeps cross-block state outside the KV cache,
+        # so partial-prefix reuse would be incorrect for either. The actual
+        # token-id ledger lives on the model; this object carries only the
+        # policy flag, threaded into stream_generate_kv.
+        self.cache_state = self._build_cache_state(model)
+        # When True, stream_generate_kv emits a per-turn reuse report
+        # (prompt/reused/reprefill token counts). Toggled by the REPL's /debug.
+        self.debug_reuse = False
+
+    @staticmethod
+    def _build_cache_state(model):
+        """Inspect the model and return a CacheState. FAIL-SAFE: reuse is OFF
+        by default and only turned ON when we can POSITIVELY confirm the
+        checkpoint is pure-attention with the cached-inference API we rely on.
+        A future architecture that adds non-KV state (a new linear-attn type,
+        sliding-window+sinks, SSM blocks, ...) without tripping a known check
+        will simply not match the allowlist and will fall back to full prefill
+        — slow, never wrong."""
+        import neo_common as nc
+
+        reusable = False
+        reason = "could not confirm pure-attention model"
+
+        layers = getattr(model, "layers", None)
+        has_ledger_api = all(
+            hasattr(model, m) for m in
+            ("get_cache_ledger", "set_cache_ledger", "reset_cache_ledger",
+             "setup_caches", "cache_capacity", "has_caches")
+        )
+
+        if layers is None or len(layers) == 0:
+            reason = "model exposes no .layers to inspect"
+        elif not has_ledger_api:
+            reason = "model lacks the cache-ledger API (older model class)"
+        elif getattr(model, "attn_res_enabled", False):
+            reason = "model uses Block-AttnRes (state outside KV cache)"
+        elif any(getattr(layer, "use_gdn", False) for layer in layers):
+            reason = "model has GDN layers (recurrent state outside KV cache)"
+        elif not all(hasattr(layer, "attention") for layer in layers):
+            # Every layer must be a standard attention block we know how to
+            # cache. Anything else → don't risk it.
+            reason = "model has non-standard layers (no .attention)"
+        else:
+            # Positively confirmed: standard attention every layer, no GDN, no
+            # AttnRes, ledger API present.
+            reusable = True
+
+        if reusable:
+            # Detect multi-device sharding. Reuse stays sound (caches are per
+            # layer on each layer's device), but the balanced-sharding memory
+            # budget is computed from weights only and does NOT account for a
+            # permanently-held full-context KV cache — so a mid-session cache
+            # growth can OOM a tightly-packed device. Reuse is still enabled
+            # (the win is real on the common single-GPU path), but warn so the
+            # tighter headroom isn't a surprise, and the loud fallback in
+            # stream_generate_kv will make any OOM visible rather than silent.
+            sharded_devices = set()
+            try:
+                dev_map = getattr(model, "hf_device_map", None)
+                if dev_map:
+                    sharded_devices = set(dev_map.values())
+                else:
+                    sharded_devices = {p.device for p in model.parameters()}
+            except Exception:
+                sharded_devices = set()
+
+            log("KV-cache prefix reuse: ENABLED (verified pure-attention model)")
+            if len(sharded_devices) > 1:
+                log(f"  NOTE: model spans {len(sharded_devices)} devices. The held "
+                    f"KV cache is not in the sharding memory budget; if a turn OOMs "
+                    f"during cache growth, reuse will report a fallback (see warnings).")
+        else:
+            log(f"KV-cache prefix reuse: DISABLED ({reason})")
+
+        return nc.CacheState(reusable=reusable)
+
+    def reset_kv_cache(self):
+        """Drop any cross-turn KV-cache prefix reuse state. Call when the
+        conversation context changes discontinuously (new chat, new prompt
+        file, prompt-format toggle) so the next generation can't reuse stale
+        K/V from an unrelated context."""
+        m = self.model
+        if hasattr(m, "reset_cache_ledger"):
+            m.reset_cache_ledger()
+
     def generate(self, prompt: str, max_new_tokens: int, temperature: float,
                 top_p: float, stop_sequences: List[str], stream_output: bool = True,
                 return_stop_info: bool = False,
@@ -477,7 +568,9 @@ class CustomModelWrapper(ModelWrapper):
             print_prompt=False,
             return_stop_info=return_stop_info,
             pretty_print=pretty_print,
-            role_names=role_names
+            role_names=role_names,
+            cache_state=self.cache_state,
+            debug_reuse=self.debug_reuse
         )
 
     def get_context_length(self) -> int:
@@ -882,6 +975,7 @@ class ChatSession:
             else:
                 # GGUF chat completion mode
                 response = self.model_wrapper.generate(
+                    messages=self.messages,
                     max_new_tokens=self.config["max_new_tokens"],
                     temperature=self.config["temperature"],
                     top_p=self.config["top_p"],
@@ -1177,7 +1271,21 @@ def load_model(config: dict, args: argparse.Namespace) -> ModelWrapper:
         if hasattr(model_cfg, "max_seq_len"):
             config["context_len"] = model_cfg.max_seq_len
             log(f"Context length from model config: {config['context_len']} tokens")
-        
+
+        # Sanity check qk_norm_mode: the inference forward paths in model_v2
+        # only IMPLEMENT 'before_rope' and 'after_rope_legacy'. A checkpoint
+        # configured with any other non-None mode (e.g. 'after_rope_fixed')
+        # would silently run with NO qk-norm at inference — wrong logits,
+        # independent of KV-cache reuse. Warn loudly so it isn't mistaken for a
+        # reuse bug.
+        _IMPLEMENTED_QK_NORM = (None, "before_rope", "after_rope_legacy")
+        _qk_mode = getattr(model_cfg, "qk_norm_mode", None)
+        if _qk_mode not in _IMPLEMENTED_QK_NORM:
+            log(f"WARNING: model qk_norm_mode={_qk_mode!r} is NOT implemented in the "
+                f"inference forward path (only {_IMPLEMENTED_QK_NORM[1:]} are). "
+                f"Inference will run WITHOUT qk-norm and produce wrong logits. "
+                f"This is unrelated to KV-cache reuse.")
+
         wrapper = CustomModelWrapper(model, enc, config["context_len"])
     
     return wrapper
@@ -1274,6 +1382,9 @@ if __name__ == '__main__':
             
             # Create chat session
             session = ChatSession(model_wrapper, converter, config, use_chat_mode, chat_format=args.chat_format)
+            # New conversation context → drop any reused KV-cache prefix from a
+            # previous prompt file / chat so we can't inherit unrelated K/V.
+            model_wrapper.reset_kv_cache()
             initial_text = session.load_prompt(prompt_path)
 
             log(f"Loaded: {session.ai_name} (seed: {session.seed})")
@@ -1506,8 +1617,9 @@ if __name__ == '__main__':
                             config["force_response"] = not config["force_response"]
                             log(f"Force response mode: {config['force_response']}")
                             getting_input = True
-                        elif user_response.startswith("/gen"):
-                            # Generate tokens
+                        elif user_response.startswith("/gen") or user_response.startswith("/size"):
+                            # Set max response tokens (accept both /gen and the
+                            # /size name advertised in /help).
                             log(f"Response tokens: {config['max_new_tokens']}")
                             new_response_tokens = input(f"Enter new response tokens: ")
                             config["max_new_tokens"] = int(new_response_tokens)
@@ -1530,21 +1642,52 @@ if __name__ == '__main__':
                             print(f"/cls    - Clear the screen")
                             print(f"/debug  - Toggle debug mode (show stop reasons) [{config['debug']}]")
                             print(f"/compact - Toggle compact mode (strip newlines) [{config['compact']}]")
+                            print(f"/parity - Verify KV-cache prefix reuse is bit-exact (custom models)")
                             print(f"/raw    - Toggle mara chat format / raw completion mode")
                             print(f"//<str> - Add narrative/OOC text (system message in chat mode)")
                             getting_input = True
                         elif user_response.startswith("/debug"):
                             config["debug"] = not config["debug"]
+                            # Also surface per-turn KV-cache reuse stats so you
+                            # can see whether prefix reuse is actually engaging.
+                            if isinstance(model_wrapper, CustomModelWrapper):
+                                model_wrapper.debug_reuse = config["debug"]
                             log(f"Debug mode: {config['debug']}")
                             getting_input = True
                         elif user_response.startswith("/compact"):
                             config["compact"] = not config["compact"]
                             log(f"Compact mode: {config['compact']}")
                             getting_input = True
+                        elif user_response.startswith("/parity"):
+                            # Prove KV-cache prefix reuse is bit-exact vs a fresh
+                            # full prefill (deterministic, temp=0). Only custom
+                            # models go through stream_generate_kv's reuse path.
+                            if isinstance(model_wrapper, CustomModelWrapper):
+                                try:
+                                    import neo_common as nc
+                                    ok, detail = nc.verify_kv_reuse_parity(
+                                        model_wrapper.model,
+                                        model_wrapper.tokenizer,
+                                        model_wrapper.context_len,
+                                    )
+                                    log(("PASS " if ok else "FAIL ") + detail)
+                                except Exception as e:
+                                    log(f"Parity check error: {type(e).__name__}: {e}")
+                                # The probe mutates the KV cache; drop reuse state
+                                # so the live conversation re-prefills cleanly.
+                                model_wrapper.reset_kv_cache()
+                            else:
+                                log("/parity only applies to custom checkpoints (not GGUF)")
+                            getting_input = True
                         elif user_response.startswith("/raw"):
                             # Toggle between mara chat format and raw completion mode
                             if session.chat_format == 'mara':
                                 session.use_chat_mode = not session.use_chat_mode
+                                # Prompt format changed → the token sequence is
+                                # discontinuous with the cached prefix; drop reuse
+                                # state so the next turn can't match a spurious
+                                # (e.g. BOS-only) prefix against the old format.
+                                model_wrapper.reset_kv_cache()
                                 if session.use_chat_mode:
                                     log("Switched to: Mara chat format")
                                 else:
