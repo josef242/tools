@@ -736,6 +736,212 @@ def test_gsm8k(model, tokenizer, device, n_shot=8, batch_size=4, num_samples=Non
 #accuracy = test_gsm8k(model, tokenizer, device, 
 #                      num_samples=100)
 
+def run_activation_probe(model_path, *, gpu=None, half=True, batch_size=8, seq_len=8192,
+                         tok_kind=None, tok_path=None, special_tokens=None,
+                         shard_strategy="none", max_memory=None, qk_norm_mode=None,
+                         use_keel=False, output_path=None,
+                         data_root="../../notebooks/datasets/tokenized/llama/",
+                         groups=("ao3", "books", "stories", "preselect",
+                                 "code_python", "code_c", "edufineweb_1.5TT")):
+    """Per-layer forward activation RMS probe for KEEL diagnostics.
+
+    Loads the latest checkpoint under ``model_path`` (file or dir), runs a single
+    forward pass over a calibration batch built from the validation shards of the
+    listed groups, and dumps per-block residual + sub-layer RMS values to JSON.
+
+    Hooks (model is in eval mode and was loaded with use_activation_checkpointing=False
+    by neo_common, so cp.checkpoint will not re-fire forward):
+      * pre-hook on attention_norm   -> h_in_rms
+      * forward hook on attention/gdn_attn -> attn_out_rms
+      * pre-hook on ffn_norm          -> h_mid_rms (post-attn-LN value)
+      * forward hook on feed_forward/moe -> ffn_out_rms
+      * forward hook on the block     -> h_out_rms (post-ffn-LN value)
+      * pre/forward hooks on model.norm -> final_norm_in/out_rms
+
+    Block 0 has no Post-LN/alpha; we just record what exists.
+    """
+    import glob
+
+    # ---- resolve checkpoint path ---------------------------------------------
+    resolved_path = resolve_model_path(model_path)
+    ckpt_dir = os.path.dirname(os.path.abspath(resolved_path))
+    step_match = re.search(r'_(\d+)\.pt$', os.path.basename(resolved_path))
+    step = int(step_match.group(1)) if step_match else None
+
+    # ---- load model + tokenizer ---------------------------------------------
+    device = nc.detect_device(gpu)
+    logger.print_and_log(f"Activation probe: loading {os.path.basename(resolved_path)} on {device}")
+    t0 = time.time()
+    model, enc, cfg = nc.load_model_and_tokenizer(
+        resolved_path,
+        device=device,
+        half_precision=half,
+        tok_kind=tok_kind,
+        tok_path=tok_path,
+        special_tokens=special_tokens,
+        shard_strategy=shard_strategy,
+        preferred_gpu=gpu,
+        max_memory_per_gpu=max_memory,
+        qk_norm_mode=qk_norm_mode,
+        use_keel=use_keel or None,
+    )
+    logger.print_and_log(f"Loaded in {time.time() - t0:.1f}s")
+    model.eval()
+
+    # Belt-and-braces: make sure no block re-enters cp.checkpoint during the probe.
+    for blk in model.layers:
+        if hasattr(blk, "use_activation_checkpointing"):
+            blk.use_activation_checkpointing = False
+
+    keel_alpha = float(getattr(cfg, "keel_alpha", 0) or 0)
+    if keel_alpha == 0 and getattr(cfg, "use_keel", False):
+        keel_alpha = float(getattr(cfg, "n_layers", 0) * 2)
+    n_layers = len(model.layers)
+    logger.print_and_log(f"Probing {n_layers} blocks; keel_alpha={keel_alpha}")
+
+    # ---- build calibration batch from validation shards ----------------------
+    # Resolve data_root relative to checkpoint dir if necessary.
+    candidate_roots = []
+    if os.path.isabs(data_root):
+        candidate_roots.append(data_root)
+    else:
+        candidate_roots.append(os.path.normpath(os.path.join(ckpt_dir, data_root)))
+        candidate_roots.append(os.path.abspath(data_root))
+    data_root_resolved = next((p for p in candidate_roots if os.path.isdir(p)), None)
+    if data_root_resolved is None:
+        raise FileNotFoundError(f"Could not find tokenized data root. Tried: {candidate_roots}")
+    logger.print_and_log(f"Calibration batch: {batch_size}x{seq_len} from {data_root_resolved}")
+
+    # Round-robin one sequence per group until we have batch_size sequences.
+    seqs = []
+    group_cycle = list(groups)
+    gi = 0
+    rng = np.random.default_rng(0)
+    while len(seqs) < batch_size:
+        if not group_cycle:
+            raise RuntimeError("No groups have any usable validation shards")
+        g = group_cycle[gi % len(group_cycle)]
+        shards = sorted(glob.glob(os.path.join(data_root_resolved, g, f"*_val_*.npy")))
+        if not shards:
+            logger.print_and_log(f"  [warn] no val shards for group '{g}' — skipping")
+            group_cycle.remove(g)
+            continue
+        arr = np.load(shards[0], mmap_mode='r')
+        if arr.shape[0] < seq_len + 1:
+            logger.print_and_log(f"  [warn] {g} shard too short — skipping")
+            group_cycle.remove(g)
+            continue
+        # Pick a random offset (deterministic per call) so we don't always grab
+        # the same opening tokens.
+        max_start = arr.shape[0] - seq_len
+        start = int(rng.integers(0, max_start + 1))
+        chunk = np.asarray(arr[start:start + seq_len])
+        if chunk.dtype == np.uint16:
+            chunk = chunk.astype(np.int32)
+        elif chunk.dtype == np.uint32:
+            chunk = np.ascontiguousarray(chunk, dtype=np.int32)
+        seqs.append(chunk)
+        gi += 1
+    tokens = torch.from_numpy(np.stack(seqs)).long().to(device)
+    logger.print_and_log(f"Calibration batch dtype={tokens.dtype} shape={tuple(tokens.shape)}")
+
+    # ---- attach hooks --------------------------------------------------------
+    per_layer = [{} for _ in range(n_layers)]   # filled by hooks
+    tail = {}
+
+    def _rms(t):
+        if isinstance(t, tuple):
+            t = t[0]
+        return float(t.detach().float().pow(2).mean(dim=-1).sqrt().mean().item())
+
+    def make_pre(target_dict, key):
+        def hook(_mod, inputs):
+            x = inputs[0]
+            target_dict[key] = _rms(x)
+        return hook
+
+    def make_post(target_dict, key):
+        def hook(_mod, _inputs, output):
+            target_dict[key] = _rms(output)
+        return hook
+
+    handles = []
+    for i, blk in enumerate(model.layers):
+        d = per_layer[i]
+        handles.append(blk.attention_norm.register_forward_pre_hook(make_pre(d, "h_in_rms")))
+        attn_mod = blk.gdn_attn if getattr(blk, "use_gdn", False) else blk.attention
+        handles.append(attn_mod.register_forward_hook(make_post(d, "attn_out_rms")))
+        handles.append(blk.ffn_norm.register_forward_pre_hook(make_pre(d, "h_mid_rms")))
+        ffn_mod = blk.moe if getattr(blk, "moe_enabled", False) else blk.feed_forward
+        handles.append(ffn_mod.register_forward_hook(make_post(d, "ffn_out_rms")))
+        handles.append(blk.register_forward_hook(make_post(d, "h_out_rms")))
+    handles.append(model.norm.register_forward_pre_hook(make_pre(tail, "final_norm_in_rms")))
+    handles.append(model.norm.register_forward_hook(make_post(tail, "final_norm_out_rms")))
+
+    # ---- forward pass --------------------------------------------------------
+    try:
+        t0 = time.time()
+        with torch.no_grad():
+            model(tokens)
+        logger.print_and_log(f"Forward pass: {time.time() - t0:.1f}s")
+    finally:
+        for h in handles:
+            h.remove()
+
+    # ---- assemble output -----------------------------------------------------
+    out_layers = []
+    for i, d in enumerate(per_layer):
+        rec = {"idx": i}
+        for k in ("h_in_rms", "attn_out_rms", "h_mid_rms", "ffn_out_rms", "h_out_rms"):
+            if k in d:
+                rec[k] = d[k]
+        out_layers.append(rec)
+
+    payload = {
+        "step": step,
+        "alpha": keel_alpha if keel_alpha else None,
+        "n_layers": n_layers,
+        "batch": list(tokens.shape),
+        "groups": list(groups),
+        "layers": out_layers,
+        "final_norm_in_rms": tail.get("final_norm_in_rms"),
+        "final_norm_out_rms": tail.get("final_norm_out_rms"),
+    }
+
+    if output_path is None:
+        suffix = f"_step_{step:06d}" if step is not None else ""
+        output_path = os.path.join(ckpt_dir, f"activation_probe{suffix}.json")
+    with open(output_path, "w") as f:
+        json.dump(payload, f, indent=2)
+    logger.print_and_log(f"Wrote {output_path}")
+
+    # ---- summary table -------------------------------------------------------
+    print("")
+    header = f"{'idx':>4} {'h_in':>10} {'attn_out':>10} {'h_mid':>10} {'ffn_out':>10} {'h_out':>10} {'ffn/(a*h_in)':>14}"
+    print(header)
+    print("-" * len(header))
+    alpha_for_ratio = keel_alpha if keel_alpha else 1.0
+    for rec in out_layers:
+        h_in = rec.get("h_in_rms")
+        attn_out = rec.get("attn_out_rms")
+        h_mid = rec.get("h_mid_rms")
+        ffn_out = rec.get("ffn_out_rms")
+        h_out = rec.get("h_out_rms")
+        if h_in is not None and ffn_out is not None and alpha_for_ratio > 0:
+            ratio = ffn_out / (alpha_for_ratio * h_in)
+            ratio_s = f"{ratio:14.3e}"
+        else:
+            ratio_s = f"{'-':>14}"
+        def _f(v):
+            return f"{v:10.4f}" if v is not None else f"{'-':>10}"
+        print(f"{rec['idx']:>4d} {_f(h_in)} {_f(attn_out)} {_f(h_mid)} {_f(ffn_out)} {_f(h_out)} {ratio_s}")
+    print("-" * len(header))
+    print(f"final_norm_in_rms = {payload['final_norm_in_rms']}")
+    print(f"final_norm_out_rms = {payload['final_norm_out_rms']}")
+
+    return payload
+
+
 def resolve_model_path(model_path):
     """
     Resolve model path to a specific .pt file.
@@ -1715,9 +1921,9 @@ class Generate(CommandFramework):
                 a = aggregate
                 logger.print_and_log(
                     f"Step {step}: "
-                    f"nonword={a.get('nonword_rate', 0):.4f}  "
-                    f"new_ent_med={a.get('new_entities_introduced_median', 0):.1f}  "
-                    f"xspan={a.get('cross_span_entity', 0):.3f}"
+                    f"nonword={(a.get('nonword_rate') or 0):.4f}  "
+                    f"new_ent_med={(a.get('new_entities_introduced_median') or 0):.1f}  "
+                    f"xspan={(a.get('cross_span_entity') or 0):.3f}"
                 )
 
             except Exception as e:
@@ -1848,9 +2054,9 @@ class Generate(CommandFramework):
         a = aggregate
         logger.print_and_log(
             f"Step {step}: "
-            f"nonword={a.get('nonword_rate', 0):.4f}  "
-            f"new_ent_med={a.get('new_entities_introduced_median', 0):.1f}  "
-            f"xspan={a.get('cross_span_entity', 0):.3f}"
+            f"nonword={(a.get('nonword_rate') or 0):.4f}  "
+            f"new_ent_med={(a.get('new_entities_introduced_median') or 0):.1f}  "
+            f"xspan={(a.get('cross_span_entity') or 0):.3f}"
         )
         logger.print_and_log(f"Appended to: {coh_log_path}")
         try:
@@ -1926,6 +2132,21 @@ def parse_args() -> argparse.Namespace:
                         help="One-off coherence eval on a single checkpoint step. Appends to coherence_log.jsonl.")
     parser.add_argument("--coherence_force", action="store_true",
                         help="With --coherence_step, re-evaluate even if the step is already in the log.")
+
+    # Activation probe (per-layer forward RMS for KEEL diagnostics)
+    parser.add_argument("--mode", type=str, default=None,
+                        choices=[None, "activation-probe"],
+                        help="Non-interactive mode. 'activation-probe' dumps per-layer "
+                             "forward activation RMS for the latest checkpoint and exits.")
+    parser.add_argument("--probe_seq_len", type=int, default=8192,
+                        help="Sequence length for activation probe calibration batch (default: 8192)")
+    parser.add_argument("--probe_batch_size", type=int, default=8,
+                        help="Number of sequences in activation probe calibration batch (default: 8)")
+    parser.add_argument("--probe_data_root", type=str,
+                        default="../../notebooks/datasets/tokenized/llama/",
+                        help="Tokenized data root for activation probe (resolved from CWD or checkpoint dir)")
+    parser.add_argument("--probe_output", type=str, default=None,
+                        help="Output JSON path. Default: <ckpt_dir>/activation_probe_step_<N>.json")
     return parser.parse_args()
 
 # Main entry point
@@ -2045,6 +2266,31 @@ if __name__ == "__main__":
             top_p=args.coherence_top_p,
             sweep_seed=args.coherence_seed,
             force=args.coherence_force,
+        )
+        sys.exit(0)
+
+    # Activation probe mode (per-layer forward RMS) — non-interactive
+    if args.mode == "activation-probe":
+        qk_mode = getattr(args, 'qk_norm_mode', None)
+        if qk_mode is not None:
+            qk_mode = qk_mode.lower()
+            if qk_mode == "none":
+                qk_mode = None
+        run_activation_probe(
+            args.model_path,
+            gpu=args.gpu,
+            half=not args.full,
+            batch_size=args.probe_batch_size,
+            seq_len=args.probe_seq_len,
+            tok_kind=args.tok_kind,
+            tok_path=args.tok_path,
+            special_tokens=args.special_tokens,
+            shard_strategy=args.shard_strategy,
+            max_memory=args.max_memory,
+            qk_norm_mode=qk_mode,
+            use_keel=args.use_keel,
+            output_path=args.probe_output,
+            data_root=args.probe_data_root,
         )
         sys.exit(0)
 
