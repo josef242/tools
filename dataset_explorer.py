@@ -10,7 +10,9 @@ Key changes from original:
 3. All original functionality preserved
 """
 
+import bisect
 import json
+import shlex
 import sys
 import os
 from pathlib import Path
@@ -61,6 +63,46 @@ try:
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
+
+
+def _parse_list_args(args: List[str]) -> Optional[Tuple[Optional[int], int]]:
+    """Parse args for the 'list' command. Returns (count, width) or None on error.
+
+    count=None means 'all'. Defaults: count=200, width=100.
+    Accepted forms: '', '<n>', 'all', '<n> <width>', 'all <width>'.
+    """
+    count: Optional[int] = 200
+    width = 100
+
+    if args:
+        first = args[0]
+        if first.lower() == 'all':
+            count = None
+        else:
+            try:
+                count = int(first)
+            except ValueError:
+                print(f"Invalid count: {first} (expected integer or 'all')")
+                return None
+            if count <= 0:
+                print("Count must be a positive integer (or 'all').")
+                return None
+
+    if len(args) > 1:
+        try:
+            width = int(args[1])
+        except ValueError:
+            print(f"Invalid width: {args[1]}")
+            return None
+        if width <= 0:
+            print("Width must be a positive integer.")
+            return None
+
+    if len(args) > 2:
+        print("Usage: list [<n>|all] [<width>]")
+        return None
+
+    return count, width
 
 
 class TemporaryFileManager:
@@ -254,6 +296,70 @@ def decompress_zst_file(zst_filepath: Path, console: Optional[Console] = None) -
     return temp_filepath
 
 
+def _peek_first_nonws_char(filepath: Path, max_bytes: int = 4096) -> str:
+    """Return the first non-whitespace character of a text file, or '' if empty."""
+    with open(filepath, 'rb') as f:
+        chunk = f.read(max_bytes)
+    try:
+        text = chunk.decode('utf-8', errors='replace')
+    except Exception:
+        return ''
+    for ch in text:
+        if not ch.isspace():
+            return ch
+    return ''
+
+
+def convert_json_array_to_jsonl(json_filepath: Path, console: Optional[Console] = None) -> Path:
+    """Convert a top-level JSON array file to a JSONL temp file. Returns its path.
+
+    Loads the array fully via json.load (memory cost ≈ 2-3x file size while parsing).
+    Caches the converted file in <source_dir>/tmp/ keyed on the original path; reuses
+    if newer than the source.
+    """
+    file_size = json_filepath.stat().st_size
+    file_size_mb = file_size / (1024 * 1024)
+
+    temp_dir = json_filepath.parent / "tmp"
+    temp_dir.mkdir(exist_ok=True)
+    temp_manager.register_dir(temp_dir)
+
+    file_hash = hashlib.md5(str(json_filepath.absolute()).encode()).hexdigest()[:8]
+    temp_filepath = temp_dir / f"{json_filepath.stem}_{file_hash}.jsonl"
+
+    if temp_filepath.exists():
+        if temp_filepath.stat().st_mtime > json_filepath.stat().st_mtime:
+            msg = f"Using existing JSONL conversion: {temp_filepath.name}"
+            if console and RICH_AVAILABLE:
+                console.print(f"[green]{msg}[/green]")
+            else:
+                print(msg)
+            return temp_filepath
+        temp_filepath.unlink()
+
+    print(f"Converting JSON array ({file_size_mb:.1f} MB) to JSONL...")
+    print(f"Temporary location: {temp_filepath}")
+    temp_manager.register_file(temp_filepath)
+
+    with open(json_filepath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Expected a JSON array at the top level of {json_filepath.name}, "
+            f"got {type(data).__name__}. Use .jsonl format for line-delimited records."
+        )
+
+    n = len(data)
+    print(f"Writing {n:,} records as JSONL...")
+    with open(temp_filepath, 'w', encoding='utf-8') as f:
+        for record in data:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    print(f"Conversion complete: {temp_filepath.name}")
+    return temp_filepath
+
+
 class MetadataCache:
     """Handles caching and retrieval of dataset metadata."""
     
@@ -360,25 +466,48 @@ class MetadataCache:
 class DatasetExplorer:
     """Main class for exploring large dataset files."""
     
-    def __init__(self, filepath: str, max_display_width: int = 200, quick_mode: bool = False, 
+    def __init__(self, filepath: str, max_display_width: int = 200, quick_mode: bool = False,
                  no_cache: bool = False, rebuild_cache: bool = False):
-        # Store both original and working filepaths
         self.original_filepath = Path(filepath)
-        self.filepath = self.original_filepath  # May be modified if compressed
-        self.is_compressed = False
-        
+        if not self.original_filepath.exists():
+            raise FileNotFoundError(f"File or directory not found: {filepath}")
+
         self.max_display_width = max_display_width
         self.quick_mode = quick_mode
         self.no_cache = no_cache
+        self.rebuild_cache = rebuild_cache
         self.console = Console() if RICH_AVAILABLE else None
-        
-        if not self.original_filepath.exists():
-            raise FileNotFoundError(f"File not found: {filepath}")
-        
-        # Handle compressed files BEFORE detecting file type
+
+        # Common state
+        self.data = None
+        self.metadata: Dict[str, Any] = {}
+        self.line_positions: Optional[List[int]] = None  # Single-file JSONL only
+        self.search_state: Optional[Dict[str, Any]] = None
+        self.full_display = False
+        self.is_compressed = False
+        self.is_json_array = False
+        self.is_directory = self.original_filepath.is_dir()
+
+        # Multi-file state (populated only when is_directory=True)
+        self.source_files: List[Path] = []
+        self.working_files: List[Path] = []
+        self.file_record_counts: List[int] = []
+        self.file_line_positions: List[Optional[List[int]]] = []
+        self.file_metadata_list: List[Dict[str, Any]] = []
+        self.file_caches: List[Optional['MetadataCache']] = []
+        self.cum_record_counts: List[int] = [0]
+
+        if self.is_directory:
+            self._init_multi_file()
+        else:
+            self._init_single_file()
+
+    def _init_single_file(self):
+        """Set up the explorer for a single source file."""
+        self.filepath = self.original_filepath  # May be replaced with a temp file
+
         if self.original_filepath.suffix.lower() == '.zst':
             self.is_compressed = True
-            # Check if it's a supported compressed format
             if '.jsonl.zst' in self.original_filepath.name.lower():
                 self.filepath = decompress_zst_file(self.original_filepath, self.console)
                 self.file_type = 'jsonl'
@@ -389,24 +518,21 @@ class DatasetExplorer:
                 )
         else:
             self.file_type = self._detect_file_type()
-        
-        self.data = None
-        self.metadata = {}
-        self.line_positions = None  # For JSONL files
-        
-        # Initialize cache with original filepath if compressed
-        if self.is_compressed:
-            self.cache = MetadataCache(self.filepath, self.original_filepath) if not no_cache else None
-        else:
-            self.cache = MetadataCache(self.filepath) if not no_cache else None
-        
-        if rebuild_cache and self.cache:
+            if self.file_type == 'jsonl' and _peek_first_nonws_char(self.original_filepath) == '[':
+                self.is_json_array = True
+                self.filepath = convert_json_array_to_jsonl(self.original_filepath, self.console)
+                self.file_type = 'jsonl'
+
+        cache_orig = self.original_filepath if self.filepath != self.original_filepath else None
+        self.cache = None if self.no_cache else MetadataCache(self.filepath, cache_orig)
+
+        if self.rebuild_cache and self.cache:
             self.cache.clear()
-        
+
         self._load_metadata()
-    
+
     def _detect_file_type(self) -> str:
-        """Detect file type from extension."""
+        """Detect file type from extension of the working file."""
         suffix = self.filepath.suffix.lower()
         if suffix == '.parquet':
             return 'parquet'
@@ -414,6 +540,228 @@ class DatasetExplorer:
             return 'jsonl'
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
+
+    # ---- Multi-file (directory) support ----
+
+    SUPPORTED_EXTENSIONS = ('.parquet', '.jsonl', '.json', '.zst')
+
+    def _list_directory_files(self) -> List[Path]:
+        """Top-level supported files in the directory, alphabetically sorted."""
+        return sorted(
+            p for p in self.original_filepath.iterdir()
+            if p.is_file() and (
+                p.suffix.lower() in ('.parquet', '.jsonl', '.json')
+                or p.name.lower().endswith('.jsonl.zst')
+            )
+        )
+
+    def _prepare_file(self, source_path: Path) -> Dict[str, Any]:
+        """Per-file preparation used by multi-file mode.
+
+        Decompresses/converts if needed, loads schema, and (for JSONL) builds the
+        line index. Always uses the cache when available; never prompts. Returns a
+        dict capturing everything the explorer needs to address records in the file.
+        """
+        is_compressed = False
+        is_json_array = False
+        working_path = source_path
+
+        suffix = source_path.suffix.lower()
+        name_lc = source_path.name.lower()
+
+        if suffix == '.zst':
+            is_compressed = True
+            if '.jsonl.zst' in name_lc:
+                working_path = decompress_zst_file(source_path, self.console)
+                file_type = 'jsonl'
+            else:
+                raise ValueError(
+                    f"Unsupported compressed file: {source_path.name}. "
+                    f"Only .jsonl.zst is supported."
+                )
+        elif suffix == '.parquet':
+            file_type = 'parquet'
+        elif suffix in ('.jsonl', '.json'):
+            file_type = 'jsonl'
+            if _peek_first_nonws_char(source_path) == '[':
+                is_json_array = True
+                working_path = convert_json_array_to_jsonl(source_path, self.console)
+        else:
+            raise ValueError(f"Unsupported file type: {source_path.name}")
+
+        cache_orig = source_path if working_path != source_path else None
+        cache = None if self.no_cache else MetadataCache(working_path, cache_orig)
+        if self.rebuild_cache and cache:
+            cache.clear()
+
+        columns: Optional[List[str]] = None
+        schema: Optional[Dict[str, str]] = None
+        num_rows: Optional[int] = None
+        line_positions: Optional[List[int]] = None
+
+        if cache:
+            cache_data = cache.load()
+            if cache_data:
+                md = cache_data['metadata']
+                columns = md.get('columns')
+                schema = md.get('schema')
+                num_rows = md.get('num_rows')
+                line_positions = cache_data.get('line_positions')
+
+        if file_type == 'parquet':
+            if columns is None or num_rows is None:
+                pf = pq.ParquetFile(working_path)
+                num_rows = pf.metadata.num_rows
+                arrow_schema = pf.schema_arrow
+                columns = list(arrow_schema.names)
+                schema = {arrow_schema.field(i).name: str(arrow_schema.field(i).type)
+                          for i in range(len(arrow_schema))}
+                if cache:
+                    cache.save({
+                        'columns': columns,
+                        'schema': schema,
+                        'num_rows': num_rows,
+                        'num_columns': len(columns),
+                    })
+
+        elif file_type == 'jsonl':
+            if columns is None:
+                with open(working_path, 'r', encoding='utf-8') as f:
+                    first_line = f.readline()
+                if first_line:
+                    first_record = json.loads(first_line)
+                    if not isinstance(first_record, dict):
+                        raise ValueError(
+                            f"Records in {source_path.name} are not JSON objects "
+                            f"(got {type(first_record).__name__})."
+                        )
+                    columns = list(first_record.keys())
+                    schema = {k: type(v).__name__ for k, v in first_record.items()}
+
+            if line_positions is None or num_rows is None:
+                num_rows, line_positions = self._build_line_positions_with_progress(working_path)
+                if cache:
+                    cache.save({
+                        'columns': columns,
+                        'schema': schema,
+                        'num_rows': num_rows,
+                        'num_columns': len(columns or []),
+                        'has_index': True,
+                    }, line_positions)
+
+        return {
+            'source_path': source_path,
+            'working_path': working_path,
+            'file_type': file_type,
+            'is_compressed': is_compressed,
+            'is_json_array': is_json_array,
+            'num_rows': num_rows,
+            'columns': columns,
+            'schema': schema,
+            'line_positions': line_positions,
+            'cache': cache,
+            'source_size_mb': source_path.stat().st_size / (1024 * 1024),
+            'working_size_mb': working_path.stat().st_size / (1024 * 1024),
+        }
+
+    def _init_multi_file(self):
+        """Set up the explorer for a directory of files (same format, same schema)."""
+        candidates = self._list_directory_files()
+        if not candidates:
+            raise ValueError(
+                f"No supported data files found in {self.original_filepath}.\n"
+                f"Looked for .parquet, .jsonl, .json, .jsonl.zst (top-level only)."
+            )
+
+        if self.console and RICH_AVAILABLE:
+            self.console.print(
+                f"[cyan]Directory mode: found {len(candidates)} file(s) in "
+                f"{self.original_filepath}[/cyan]"
+            )
+        else:
+            print(f"Directory mode: found {len(candidates)} file(s) in {self.original_filepath}")
+
+        canonical_columns: Optional[List[str]] = None
+        canonical_schema: Optional[Dict[str, str]] = None
+        canonical_type: Optional[str] = None
+
+        for i, source_path in enumerate(candidates, 1):
+            if self.console and RICH_AVAILABLE:
+                self.console.print(f"\n[bold cyan]\\[{i}/{len(candidates)}][/bold cyan] {source_path.name}")
+            else:
+                print(f"\n[{i}/{len(candidates)}] {source_path.name}")
+
+            info = self._prepare_file(source_path)
+
+            if canonical_type is None:
+                canonical_type = info['file_type']
+            elif info['file_type'] != canonical_type:
+                raise ValueError(
+                    f"Mixed file types in directory:\n"
+                    f"  {candidates[0].name}: {canonical_type}\n"
+                    f"  {source_path.name}: {info['file_type']}\n"
+                    f"All files must be the same format."
+                )
+
+            if canonical_columns is None:
+                canonical_columns = info['columns']
+                canonical_schema = info['schema']
+            elif info['columns'] != canonical_columns:
+                raise ValueError(
+                    f"Schema mismatch in {source_path.name}:\n"
+                    f"  Expected columns (from {candidates[0].name}): {canonical_columns}\n"
+                    f"  Got: {info['columns']}\n"
+                    f"All files in the directory must share the same fields."
+                )
+
+            self.source_files.append(info['source_path'])
+            self.working_files.append(info['working_path'])
+            self.file_record_counts.append(info['num_rows'])
+            self.file_line_positions.append(info['line_positions'])
+            self.file_metadata_list.append(info)
+            self.file_caches.append(info['cache'])
+
+        # Cumulative offsets: cum[i] = total records BEFORE file i; cum[-1] = grand total
+        self.cum_record_counts = [0]
+        for c in self.file_record_counts:
+            self.cum_record_counts.append(self.cum_record_counts[-1] + c)
+
+        self.file_type = canonical_type
+
+        total_source_mb = sum(m['source_size_mb'] for m in self.file_metadata_list)
+        total_working_mb = sum(m['working_size_mb'] for m in self.file_metadata_list)
+
+        self.metadata = {
+            'file_path': str(self.original_filepath.absolute()),
+            'is_directory': True,
+            'num_files': len(self.source_files),
+            'num_rows': self.cum_record_counts[-1],
+            'columns': canonical_columns,
+            'schema': canonical_schema,
+            'num_columns': len(canonical_columns) if canonical_columns else 0,
+            'file_size': total_source_mb,
+            'total_source_mb': total_source_mb,
+            'total_working_mb': total_working_mb,
+            'has_index': (canonical_type == 'jsonl'
+                          and all(lp is not None for lp in self.file_line_positions)),
+        }
+
+        # Single-file aliases for backward compat with code that hasn't been updated.
+        # In multi-file mode these point at the FIRST file as a sensible default,
+        # but methods that operate over all files should consult self.is_directory.
+        self.filepath = self.working_files[0]
+        self.line_positions = None
+        self.cache = None
+
+    def _global_to_local(self, global_idx: int) -> Tuple[int, int]:
+        """Map a global record index to (file_index, local_index_within_file)."""
+        total = self.cum_record_counts[-1] if self.cum_record_counts else 0
+        if global_idx < 0 or global_idx >= total:
+            raise IndexError(f"Record number {global_idx} out of range (0-{total - 1})")
+        # bisect_right finds insertion point; subtract 1 for the owning file.
+        file_idx = bisect.bisect_right(self.cum_record_counts, global_idx) - 1
+        local_idx = global_idx - self.cum_record_counts[file_idx]
+        return file_idx, local_idx
     
     def _build_line_positions_with_progress(self, filepath: Path) -> Tuple[int, List[int]]:
         """Build an index of byte positions for each line start."""
@@ -606,17 +954,22 @@ class DatasetExplorer:
                 return
         
         # No cache or cache invalid, load metadata normally
-        # Store both original and working file sizes for compressed files
+        # Store both original and working file sizes for compressed/converted files
         if self.is_compressed:
             self.metadata['original_file_size'] = self.original_filepath.stat().st_size / (1024 * 1024)  # MB
             self.metadata['decompressed_file_size'] = self.filepath.stat().st_size / (1024 * 1024)  # MB
             self.metadata['file_size'] = self.metadata['decompressed_file_size']  # For compatibility
             self.metadata['compression_ratio'] = self.metadata['decompressed_file_size'] / self.metadata['original_file_size']
+        elif self.is_json_array:
+            self.metadata['original_file_size'] = self.original_filepath.stat().st_size / (1024 * 1024)  # MB
+            self.metadata['converted_file_size'] = self.filepath.stat().st_size / (1024 * 1024)  # MB
+            self.metadata['file_size'] = self.metadata['converted_file_size']
         else:
             self.metadata['file_size'] = self.filepath.stat().st_size / (1024 * 1024)  # MB
-        
+
         self.metadata['file_path'] = str(self.original_filepath.absolute())
         self.metadata['is_compressed'] = self.is_compressed
+        self.metadata['is_json_array'] = self.is_json_array
         
         if self.file_type == 'parquet':
             if self.console and RICH_AVAILABLE:
@@ -647,6 +1000,13 @@ class DatasetExplorer:
                 first_line = f.readline()
                 if first_line:
                     first_record = json.loads(first_line)
+                    if not isinstance(first_record, dict):
+                        raise ValueError(
+                            f"Expected each record to be a JSON object, but got "
+                            f"{type(first_record).__name__}. The file at "
+                            f"{self.original_filepath} does not appear to contain "
+                            f"object-shaped records."
+                        )
                     self.metadata['columns'] = list(first_record.keys())
                     self.metadata['schema'] = {k: type(v).__name__ for k, v in first_record.items()}
                 
@@ -732,13 +1092,28 @@ class DatasetExplorer:
                     self.cache.save(self.metadata, self.line_positions)
     
     def get_record_by_position(self, index: int) -> Optional[Dict[str, Any]]:
-        """Get a JSONL record using cached byte position (O(1) operation)."""
-        if not self.line_positions or index >= len(self.line_positions):
-            return None
-        
-        byte_pos = self.line_positions[index]
-        
-        with open(self.filepath, 'rb') as f:
+        """Get a JSONL record using its cached byte position (O(1) random access).
+
+        In directory mode, `index` is a GLOBAL record number that is mapped to the
+        owning file via cumulative counts.
+        """
+        if self.is_directory:
+            try:
+                file_idx, local_idx = self._global_to_local(index)
+            except IndexError:
+                return None
+            positions = self.file_line_positions[file_idx]
+            if positions is None or local_idx >= len(positions):
+                return None
+            byte_pos = positions[local_idx]
+            path = self.working_files[file_idx]
+        else:
+            if not self.line_positions or index >= len(self.line_positions):
+                return None
+            byte_pos = self.line_positions[index]
+            path = self.filepath
+
+        with open(path, 'rb') as f:
             f.seek(byte_pos)
             line = f.readline()
             if line:
@@ -746,11 +1121,34 @@ class DatasetExplorer:
                     return json.loads(line.decode('utf-8'))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     return None
-        
         return None
     
     def sample_records(self, n: int = 5, random: bool = False) -> pd.DataFrame:
         """Sample n records from the dataset."""
+        # Directory mode: route through global indices and reuse get_record per pick.
+        if self.is_directory:
+            total = self.cum_record_counts[-1]
+            sample_size = min(n, total)
+            if random:
+                import random as rand
+                picks = rand.sample(range(total), sample_size)
+            else:
+                picks = list(range(sample_size))
+            rows = []
+            indices_out = []
+            for gi in picks:
+                try:
+                    rec_df = self.get_record(gi)
+                    rows.append(rec_df.iloc[0])
+                    indices_out.append(gi)
+                except Exception:
+                    continue
+            df = pd.DataFrame(rows)
+            if indices_out:
+                df.index = indices_out
+            df._index_type = 'record_number'
+            return df
+
         if self.file_type == 'parquet':
             if random:
                 df = pd.read_parquet(self.filepath)
@@ -761,7 +1159,7 @@ class DatasetExplorer:
                 df = pd.read_parquet(self.filepath).head(n)
                 df._index_type = 'record_number'
                 return df
-        
+
         elif self.file_type == 'jsonl':
             records = []
             indices = []
@@ -892,194 +1290,410 @@ class DatasetExplorer:
                 return df
     
     def get_record(self, index: int) -> pd.DataFrame:
-        """Get a specific record by index."""
+        """Get a specific record by (global) index."""
         if self.metadata.get('num_rows') is not None:
             if index < 0 or index >= self.metadata['num_rows']:
-                raise ValueError(f"Record number {index} out of range. Dataset has {self.metadata['num_rows']} records (0-{self.metadata['num_rows']-1})")
+                raise ValueError(
+                    f"Record number {index} out of range. Dataset has "
+                    f"{self.metadata['num_rows']} records (0-{self.metadata['num_rows']-1})"
+                )
         elif index < 0:
             raise ValueError(f"Record number must be non-negative (got {index})")
-        
+
+        # Resolve to a working file + local index. Single-file mode is just file 0.
+        if self.is_directory:
+            file_idx, local_idx = self._global_to_local(index)
+            working_path = self.working_files[file_idx]
+        else:
+            file_idx = 0
+            local_idx = index
+            working_path = self.filepath
+
         if self.file_type == 'parquet':
-            parquet_file = pq.ParquetFile(self.filepath)
-            
+            parquet_file = pq.ParquetFile(working_path)
+
             current_idx = 0
             for i in range(parquet_file.num_row_groups):
                 row_group = parquet_file.metadata.row_group(i)
                 group_rows = row_group.num_rows
-                
-                if current_idx <= index < current_idx + group_rows:
+
+                if current_idx <= local_idx < current_idx + group_rows:
                     df = parquet_file.read_row_group(i).to_pandas()
-                    local_idx = index - current_idx
-                    result = df.iloc[[local_idx]]
+                    inner_idx = local_idx - current_idx
+                    result = df.iloc[[inner_idx]]
+                    result.index = [index]
                     result._index_type = 'record_number'
                     return result
-                
+
                 current_idx += group_rows
-            
-            df = pd.read_parquet(self.filepath)
-            result = df.iloc[[index]]
+
+            df = pd.read_parquet(working_path)
+            result = df.iloc[[local_idx]]
+            result.index = [index]
             result._index_type = 'record_number'
             return result
-        
+
         elif self.file_type == 'jsonl':
             # Use index for O(1) access if available
-            if self.line_positions:
+            if self.is_directory:
+                positions = self.file_line_positions[file_idx]
+            else:
+                positions = self.line_positions
+
+            if positions:
                 record = self.get_record_by_position(index)
                 if record:
                     df = pd.DataFrame([record], index=[index])
                     df._index_type = 'record_number'
                     return df
-                else:
-                    raise ValueError(f"Could not read record at index {index}")
-            
-            # Fallback to sequential reading
-            with open(self.filepath, 'r', encoding='utf-8') as f:
+                raise ValueError(f"Could not read record at index {index}")
+
+            # Fallback to sequential reading (single-file mode without index)
+            with open(working_path, 'r', encoding='utf-8') as f:
                 for i, line in enumerate(f):
-                    if i == index:
+                    if i == local_idx:
                         record = json.loads(line)
                         df = pd.DataFrame([record], index=[index])
                         df._index_type = 'record_number'
                         return df
-            
+
             raise ValueError(f"Could not find record at number {index}")
     
-    def search_records(self, query: str, field: Optional[str] = None, 
-                      max_results: int = 10, regex: bool = False) -> pd.DataFrame:
-        """Search for records matching a query."""
-        results = []
-        
+    def _resolve_field(self, name: str) -> Optional[str]:
+        """Return the actual column name matching `name` case-insensitively, or None."""
+        cols = self.metadata.get('columns', []) or []
+        if name in cols:
+            return name
+        name_lc = name.lower()
+        for col in cols:
+            if col.lower() == name_lc:
+                return col
+        return None
+
+    def find_all_records(self, query: Union[str, List[str]],
+                         field: Optional[str] = None,
+                         regex: bool = False,
+                         limit: Optional[int] = None) -> List[int]:
+        """Scan the dataset and return record indices for matches.
+
+        `query` may be a single string (one term) or a list of strings (AND match;
+        every term must be present in the record/field). With limit=None, scans
+        every file. With limit set, short-circuits as soon as `limit` matches are
+        collected. The caller can detect a limit hit via `len(indices) == limit`.
+
+        In directory mode, returned indices are GLOBAL across the directory; rows
+        from each file are scanned in alphabetical order with offsets applied.
+        """
+        indices: List[int] = []
+
+        terms: List[str] = [query] if isinstance(query, str) else list(query)
+        if not terms or not all(t for t in terms):
+            raise ValueError("query must be a non-empty string or list of non-empty strings")
+
+        if regex:
+            try:
+                for t in terms:
+                    re.compile(t)
+            except re.error as e:
+                raise ValueError(f"Invalid regex: {e}")
+
+        # Per-file iterator: (file_idx, working_path, base_offset, total_rows_or_None)
+        if self.is_directory:
+            file_iter = [
+                (i, self.working_files[i], self.cum_record_counts[i], self.file_record_counts[i])
+                for i in range(len(self.working_files))
+            ]
+        else:
+            file_iter = [(0, self.filepath, 0, self.metadata.get('num_rows'))]
+
         if self.file_type == 'parquet':
-            parquet_file = pq.ParquetFile(self.filepath)
-            current_row = 0
-            
-            for batch in parquet_file.iter_batches(batch_size=10000):
-                df = batch.to_pandas()
-                df.index = range(current_row, current_row + len(df))
-                
+            total_rows = self.metadata.get('num_rows') or 0
+
+            def _term_mask(df: pd.DataFrame, term: str) -> pd.Series:
                 if field:
                     if field in df.columns:
-                        if regex:
-                            mask = df[field].astype(str).str.contains(query, case=False, na=False, regex=True)
-                        else:
-                            mask = df[field].astype(str).str.contains(query, case=False, na=False, regex=False)
-                        matches = df[mask]
-                    else:
-                        current_row += len(df)
-                        continue
-                else:
-                    mask = pd.Series([False] * len(df), index=df.index)
-                    for col in df.select_dtypes(include=['object']).columns:
-                        if regex:
-                            col_mask = df[col].astype(str).str.contains(query, case=False, na=False, regex=True)
-                        else:
-                            col_mask = df[col].astype(str).str.contains(query, case=False, na=False, regex=False)
-                        mask = mask | col_mask
-                    
-                    for col in df.select_dtypes(include=['number']).columns:
-                        col_mask = df[col].astype(str).str.contains(query, case=False, na=False, regex=False)
-                        mask = mask | col_mask
-                    
-                    matches = df[mask]
-                
-                if len(matches) > 0:
-                    results.append(matches)
-                    if sum(len(r) for r in results) >= max_results:
-                        break
-                
-                current_row += len(df)
-        
+                        return df[field].astype(str).str.contains(
+                            term, case=False, na=False, regex=regex
+                        )
+                    return pd.Series([False] * len(df), index=df.index)
+                m = pd.Series([False] * len(df), index=df.index)
+                for col in df.select_dtypes(include=['object', 'str']).columns:
+                    m = m | df[col].astype(str).str.contains(
+                        term, case=False, na=False, regex=regex
+                    )
+                for col in df.select_dtypes(include=['number']).columns:
+                    m = m | df[col].astype(str).str.contains(
+                        term, case=False, na=False, regex=False
+                    )
+                return m
+
+            scanned = 0
+
+            def scan_all(progress=None, task=None):
+                nonlocal scanned
+                for fidx, working_path, base_offset, _ in file_iter:
+                    pf = pq.ParquetFile(working_path)
+                    file_cursor = base_offset
+                    for batch in pf.iter_batches(batch_size=10000):
+                        df = batch.to_pandas()
+                        df.index = range(file_cursor, file_cursor + len(df))
+
+                        mask = pd.Series([True] * len(df), index=df.index)
+                        for t in terms:
+                            mask = mask & _term_mask(df, t)
+
+                        indices.extend(df.index[mask].tolist())
+                        file_cursor += len(df)
+                        scanned += len(df)
+                        if progress is not None and task is not None:
+                            progress.update(task, completed=scanned, matches=len(indices))
+                        if limit is not None and len(indices) >= limit:
+                            del indices[limit:]
+                            return
+
+            if RICH_AVAILABLE and self.console and total_rows:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("{task.completed:,}/{task.total:,}"),
+                    TextColumn("matches: {task.fields[matches]:,}"),
+                    TimeRemainingColumn(),
+                    console=self.console,
+                ) as progress:
+                    task = progress.add_task("Scanning records...", total=total_rows, matches=0)
+                    scan_all(progress, task)
+                    progress.update(task, completed=total_rows, matches=len(indices))
+            else:
+                print("Scanning records...")
+                scan_all()
+                print(f"  Scanned {scanned:,} records, {len(indices):,} matches")
+
+            return indices
+
         elif self.file_type == 'jsonl':
-            record_indices = []
-            
-            # Show progress for searches on indexed files
-            if self.line_positions and self.metadata.get('num_rows'):
-                total_records = self.metadata['num_rows']
-                print(f"Searching {total_records:,} records...")
-                
-                for idx in range(total_records):
-                    if idx % 100000 == 0 and idx > 0:
-                        print(f"  Searched {idx:,} records...")
-                    
-                    record = self.get_record_by_position(idx)
-                    if not record:
-                        continue
-                    
-                    found = False
-                    if field:
-                        if field in record:
-                            val = str(record[field])
-                            if regex:
-                                if re.search(query, val, re.IGNORECASE):
-                                    found = True
-                            elif query.lower() in val.lower():
-                                found = True
-                    else:
-                        for val in record.values():
-                            val_str = str(val)
-                            if regex:
-                                if re.search(query, val_str, re.IGNORECASE):
-                                    found = True
-                                    break
-                            elif query.lower() in val_str.lower():
-                                found = True
-                                break
-                    
-                    if found:
-                        results.append(record)
-                        record_indices.append(idx)
-                        
-                        if len(results) >= max_results:
+            patterns = [re.compile(t, re.IGNORECASE) for t in terms] if regex else None
+            terms_lc = [t.lower() for t in terms]
+
+            def _term_in_record(record: Dict[str, Any], idx: int) -> bool:
+                if field:
+                    if field not in record:
+                        return False
+                    val = str(record[field])
+                    if regex:
+                        return bool(patterns[idx].search(val))
+                    return terms_lc[idx] in val.lower()
+                for v in record.values():
+                    v_str = str(v)
+                    if regex:
+                        if patterns[idx].search(v_str):
+                            return True
+                    elif terms_lc[idx] in v_str.lower():
+                        return True
+                return False
+
+            def line_matches(record: Dict[str, Any]) -> bool:
+                for i in range(len(terms)):
+                    if not _term_in_record(record, i):
+                        return False
+                return True
+
+            total_size = sum(p.stat().st_size for _, p, _, _ in file_iter)
+            scanned_bytes = 0
+
+            class _LimitHit(Exception):
+                pass
+
+            def scan_one(working_path: Path, base_offset: int,
+                         progress=None, task=None) -> int:
+                nonlocal scanned_bytes
+                bytes_read_local = 0
+                line_num = 0
+                update_every = 2000
+                with open(working_path, 'rb') as f:
+                    while True:
+                        line_bytes = f.readline()
+                        if not line_bytes:
                             break
-            
+                        bytes_read_local += len(line_bytes)
+                        scanned_bytes += len(line_bytes)
+                        try:
+                            record = json.loads(line_bytes)
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            line_num += 1
+                            continue
+                        if line_matches(record):
+                            indices.append(base_offset + line_num)
+                            if limit is not None and len(indices) >= limit:
+                                if progress is not None and task is not None:
+                                    progress.update(task, completed=scanned_bytes, matches=len(indices))
+                                raise _LimitHit
+                        line_num += 1
+                        if progress is not None and task is not None and line_num % update_every == 0:
+                            progress.update(task, completed=scanned_bytes, matches=len(indices))
+                return line_num
+
+            if RICH_AVAILABLE and self.console and total_size:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    TextColumn("matches: {task.fields[matches]:,}"),
+                    TextColumn("file: {task.fields[file_label]}"),
+                    TimeRemainingColumn(),
+                    console=self.console,
+                ) as progress:
+                    task = progress.add_task("Scanning records...", total=total_size,
+                                             matches=0, file_label="")
+                    try:
+                        for fidx, working_path, base_offset, _ in file_iter:
+                            label = (
+                                self.source_files[fidx].name
+                                if self.is_directory
+                                else working_path.name
+                            )
+                            progress.update(task, file_label=f"[{fidx + 1}/{len(file_iter)}] {label}")
+                            scan_one(working_path, base_offset, progress, task)
+                    except _LimitHit:
+                        pass
+                    progress.update(task, completed=total_size, matches=len(indices))
             else:
-                # Fallback to sequential search
-                with open(self.filepath, 'r', encoding='utf-8') as f:
-                    for line_num, line in enumerate(f):
-                        record = json.loads(line)
-                        
-                        found = False
-                        if field:
-                            if field in record:
-                                val = str(record[field])
-                                if regex:
-                                    if re.search(query, val, re.IGNORECASE):
-                                        found = True
-                                elif query.lower() in val.lower():
-                                    found = True
-                        else:
-                            for val in record.values():
-                                val_str = str(val)
-                                if regex:
-                                    if re.search(query, val_str, re.IGNORECASE):
-                                        found = True
-                                        break
-                                elif query.lower() in val_str.lower():
-                                    found = True
-                                    break
-                        
-                        if found:
-                            results.append(record)
-                            record_indices.append(line_num)
-                            
-                            if len(results) >= max_results:
-                                break
-        
-        if self.file_type == 'parquet':
-            if results:
-                combined = pd.concat(results).head(max_results)
-                combined._index_type = 'record_number'
-                return combined
-            else:
-                return pd.DataFrame()
+                print("Scanning records...")
+                try:
+                    for fidx, working_path, base_offset, _ in file_iter:
+                        if self.is_directory:
+                            print(f"  [{fidx + 1}/{len(file_iter)}] {self.source_files[fidx].name}")
+                        scan_one(working_path, base_offset)
+                except _LimitHit:
+                    pass
+                print(f"  Done. {len(indices):,} matches.")
+
+            return indices
+
+        return indices
+
+    def _show_current_match(self, truncate: bool = True):
+        """Display the current match from the active search_state."""
+        if not self.search_state or not self.search_state.get('indices'):
+            print("No active search results. Run 'findall <query>' first.")
+            return
+
+        s = self.search_state
+        cursor = s['cursor']
+        total = len(s['indices'])
+        record_idx = s['indices'][cursor]
+
+        header = f">>> Match {cursor + 1:,} of {total:,}  |  record #{record_idx:,}"
+        if s.get('field'):
+            header += f"  |  field: {s['field']}"
+        if s.get('regex'):
+            header += "  |  regex"
+        header += f"  |  query: {s['query']!r}"
+
+        if RICH_AVAILABLE and self.console:
+            self.console.print(f"[bold yellow]{header}[/bold yellow]")
         else:
-            df = pd.DataFrame(results[:max_results])
-            if not df.empty:
-                df.index = record_indices[:len(df)]
-                df._index_type = 'record_number'
-            return df
-    
+            print("\n" + header)
+
+        try:
+            df = self.get_record(record_idx)
+            self.display_records(df, truncate=truncate)
+        except Exception as e:
+            print(f"Error fetching record #{record_idx}: {e}")
+
+    def _display_mode_str(self) -> str:
+        """Human-readable summary of the current display setting."""
+        if self.full_display:
+            return "FULL"
+        return f"TRUNCATED@{self.max_display_width}"
+
+    def _navigate_match(self, delta: int, truncate: bool = True):
+        """Move the search cursor by delta and display."""
+        if not self.search_state or not self.search_state.get('indices'):
+            print("No active search results. Run 'findall <query>' first.")
+            return
+        total = len(self.search_state['indices'])
+        new_cursor = self.search_state['cursor'] + delta
+        if new_cursor < 0:
+            print(f"Already at first match (1 of {total:,})")
+            return
+        if new_cursor >= total:
+            print(f"Already at last match ({total:,} of {total:,})")
+            return
+        self.search_state['cursor'] = new_cursor
+        self._show_current_match(truncate=truncate)
+
+    def _record_preview_line(self, record_idx: int, width: int) -> str:
+        """Return a single-line preview of a record for list display."""
+        try:
+            df = self.get_record(record_idx)
+        except Exception as e:
+            return f"<error: {e}>"
+        if df.empty:
+            return "<empty record>"
+        row = df.iloc[0]
+
+        field = (self.search_state or {}).get('field')
+        text = None
+        if field and field in row.index:
+            val = row[field]
+            text = "" if val is None else str(val)
+        else:
+            for candidate in ('text', 'content', 'message', 'body'):
+                if candidate in row.index and row[candidate] is not None:
+                    text = str(row[candidate])
+                    break
+            if text is None:
+                parts = []
+                for col in row.index:
+                    val = row[col]
+                    if val is None:
+                        continue
+                    parts.append(f"{col}={val}")
+                text = " | ".join(parts)
+
+        first_line = next((ln for ln in text.splitlines() if ln.strip()), "")
+        if len(first_line) > width:
+            first_line = first_line[:max(width - 3, 1)] + "..."
+        return first_line
+
+    def list_matches(self, count: Optional[int] = None, width: int = 100):
+        """Print one line per match: '<n>: <preview>'."""
+        if not self.search_state or not self.search_state.get('indices'):
+            print("No active search results. Run 'findall <query>' first.")
+            return
+        indices = self.search_state['indices']
+        total = len(indices)
+        n = total if count is None else min(count, total)
+        idx_width = len(f"{total:,}")
+        cursor = self.search_state.get('cursor', 0)
+
+        if RICH_AVAILABLE and self.console:
+            from rich.markup import escape
+            for i in range(n):
+                marker = "*" if i == cursor else " "
+                preview = self._record_preview_line(indices[i], width)
+                self.console.print(
+                    f"{marker} [bold]{i + 1:>{idx_width},}[/bold]  "
+                    f"[dim]rec #{indices[i]:,}[/dim]  {escape(preview)}"
+                )
+        else:
+            for i in range(n):
+                marker = "*" if i == cursor else " "
+                preview = self._record_preview_line(indices[i], width)
+                print(f"{marker} {i + 1:>{idx_width},}  rec #{indices[i]:,}  {preview}")
+
+        if n < total:
+            print(f"... ({total - n:,} more; use 'list all' or 'list <n>' to see more)")
+        else:
+            print(f"({total:,} match{'es' if total != 1 else ''} total)")
+
     def find_record_number(self, byte_position: int) -> int:
         """Find the exact record number for a given byte position."""
+        if self.is_directory:
+            print("findrec is not supported in directory mode (byte positions are per-file).")
+            return -1
         if self.file_type != 'jsonl':
             print("Record number lookup only works for JSONL files")
             return -1
@@ -1157,21 +1771,33 @@ class DatasetExplorer:
     def print_info(self):
         """Print basic file information."""
         if RICH_AVAILABLE:
-            table = Table(title=f"Dataset Info: {self.original_filepath.name}")
+            title_name = (self.original_filepath.name + "/"
+                          if self.is_directory else self.original_filepath.name)
+            table = Table(title=f"Dataset Info: {title_name}")
             table.add_column("Property", style="cyan")
             table.add_column("Value", style="green")
-            
+
             table.add_row("File Type", self.file_type.upper())
-            
-            # Show compression info if applicable
-            if self.is_compressed:
+
+            # Show compression / conversion / directory info if applicable
+            if self.is_directory:
+                table.add_row("Source", "Directory (multi-file)")
+                table.add_row("Number of Files", f"{self.metadata['num_files']:,}")
+                table.add_row("Total Source Size", f"{self.metadata['total_source_mb']:.2f} MB")
+                if abs(self.metadata['total_working_mb'] - self.metadata['total_source_mb']) > 0.01:
+                    table.add_row("Total Working Size", f"{self.metadata['total_working_mb']:.2f} MB")
+            elif self.is_compressed:
                 table.add_row("Original Format", self.original_filepath.suffix.upper())
                 table.add_row("Compressed Size", f"{self.metadata['original_file_size']:.2f} MB")
                 table.add_row("Decompressed Size", f"{self.metadata['decompressed_file_size']:.2f} MB")
                 table.add_row("Compression Ratio", f"{self.metadata['compression_ratio']:.1f}x")
+            elif self.is_json_array:
+                table.add_row("Original Format", "JSON array (converted to JSONL)")
+                table.add_row("Original Size", f"{self.metadata['original_file_size']:.2f} MB")
+                table.add_row("Converted Size", f"{self.metadata['converted_file_size']:.2f} MB")
             else:
                 table.add_row("File Size", f"{self.metadata['file_size']:.2f} MB")
-            
+
             if self.metadata.get('num_rows') is not None:
                 count_str = f"{self.metadata['num_rows']:,}"
                 if self.metadata.get('count_is_estimate'):
@@ -1179,51 +1805,90 @@ class DatasetExplorer:
                 table.add_row("Total Records", count_str)
             else:
                 table.add_row("Total Records", "Not counted")
-            
+
             table.add_row("Number of Fields", str(self.metadata['num_columns']))
-            
+
             # Add cache/index info
             if self.file_type == 'jsonl':
                 if self.metadata.get('has_index'):
                     table.add_row("Index Status", "✓ Built (fast random access)")
                 else:
                     table.add_row("Index Status", "✗ Not built")
-            
-            if self.cache and self.cache.cache_filepath.exists():
+
+            if self.is_directory:
+                cached = sum(1 for c in self.file_caches if c and c.cache_filepath.exists())
+                table.add_row("Cache Status",
+                              f"✓ {cached}/{len(self.file_caches)} files cached"
+                              if cached else "✗ No per-file caches")
+            elif self.cache and self.cache.cache_filepath.exists():
                 cache_size = self.cache.cache_filepath.stat().st_size / 1024
                 table.add_row("Cache Status", f"✓ Cached ({cache_size:.1f} KB)")
             else:
                 table.add_row("Cache Status", "✗ Not cached")
-            
-            # Show temp file location for compressed files
-            if self.is_compressed:
+
+            # Show temp file location for compressed/converted files
+            if (self.is_compressed or self.is_json_array) and not self.is_directory:
                 table.add_row("Temp File", str(self.filepath))
-            
+
             self.console.print(table)
-            
+
+            # Per-file breakdown in directory mode
+            if self.is_directory:
+                files_table = Table(title="Files (alphabetical)")
+                files_table.add_column("#", style="dim", justify="right")
+                files_table.add_column("Name", style="cyan")
+                files_table.add_column("Records", style="green", justify="right")
+                files_table.add_column("Size (MB)", style="yellow", justify="right")
+                files_table.add_column("Note", style="magenta")
+                for i, info in enumerate(self.file_metadata_list):
+                    note_parts = []
+                    if info.get('is_compressed'):
+                        note_parts.append("compressed")
+                    if info.get('is_json_array'):
+                        note_parts.append("json-array")
+                    files_table.add_row(
+                        str(i + 1),
+                        info['source_path'].name,
+                        f"{info['num_rows']:,}",
+                        f"{info['source_size_mb']:.2f}",
+                        ", ".join(note_parts),
+                    )
+                self.console.print(files_table)
+
             schema_table = Table(title="Schema")
             schema_table.add_column("Field", style="cyan")
             schema_table.add_column("Type", style="yellow")
-            
+
             for field, dtype in self.metadata['schema'].items():
                 schema_table.add_row(field, dtype)
-            
+
             self.console.print(schema_table)
         else:
             print("\n" + "="*50)
-            print(f"Dataset Info: {self.original_filepath.name}")
+            label = (self.original_filepath.name + "/"
+                     if self.is_directory else self.original_filepath.name)
+            print(f"Dataset Info: {label}")
             print("="*50)
             print(f"File Type: {self.file_type.upper()}")
-            
-            # Show compression info if applicable
-            if self.is_compressed:
+
+            if self.is_directory:
+                print("Source: Directory (multi-file)")
+                print(f"Number of Files: {self.metadata['num_files']:,}")
+                print(f"Total Source Size: {self.metadata['total_source_mb']:.2f} MB")
+                if abs(self.metadata['total_working_mb'] - self.metadata['total_source_mb']) > 0.01:
+                    print(f"Total Working Size: {self.metadata['total_working_mb']:.2f} MB")
+            elif self.is_compressed:
                 print(f"Original Format: {self.original_filepath.suffix.upper()}")
                 print(f"Compressed Size: {self.metadata['original_file_size']:.2f} MB")
                 print(f"Decompressed Size: {self.metadata['decompressed_file_size']:.2f} MB")
                 print(f"Compression Ratio: {self.metadata['compression_ratio']:.1f}x")
+            elif self.is_json_array:
+                print(f"Original Format: JSON array (converted to JSONL)")
+                print(f"Original Size: {self.metadata['original_file_size']:.2f} MB")
+                print(f"Converted Size: {self.metadata['converted_file_size']:.2f} MB")
             else:
                 print(f"File Size: {self.metadata['file_size']:.2f} MB")
-            
+
             if self.metadata.get('num_rows') is not None:
                 count_str = f"{self.metadata['num_rows']:,}"
                 if self.metadata.get('count_is_estimate'):
@@ -1231,25 +1896,43 @@ class DatasetExplorer:
                 print(f"Total Records: {count_str}")
             else:
                 print("Total Records: Not counted")
-            
+
             print(f"Number of Fields: {self.metadata['num_columns']}")
-            
+
             if self.file_type == 'jsonl':
                 if self.metadata.get('has_index'):
                     print("Index Status: ✓ Built (fast random access)")
                 else:
                     print("Index Status: ✗ Not built")
-            
-            if self.cache and self.cache.cache_filepath.exists():
+
+            if self.is_directory:
+                cached = sum(1 for c in self.file_caches if c and c.cache_filepath.exists())
+                if cached:
+                    print(f"Cache Status: ✓ {cached}/{len(self.file_caches)} files cached")
+                else:
+                    print("Cache Status: ✗ No per-file caches")
+            elif self.cache and self.cache.cache_filepath.exists():
                 cache_size = self.cache.cache_filepath.stat().st_size / 1024
                 print(f"Cache Status: ✓ Cached ({cache_size:.1f} KB)")
             else:
                 print("Cache Status: ✗ Not cached")
-            
-            # Show temp file location for compressed files
-            if self.is_compressed:
+
+            if (self.is_compressed or self.is_json_array) and not self.is_directory:
                 print(f"Temp File: {self.filepath}")
-            
+
+            if self.is_directory:
+                print("\nFiles:")
+                for i, info in enumerate(self.file_metadata_list, 1):
+                    notes = []
+                    if info.get('is_compressed'):
+                        notes.append("compressed")
+                    if info.get('is_json_array'):
+                        notes.append("json-array")
+                    note_str = f"  ({', '.join(notes)})" if notes else ""
+                    print(f"  {i:>3}. {info['source_path'].name}: "
+                          f"{info['num_rows']:,} records, "
+                          f"{info['source_size_mb']:.2f} MB{note_str}")
+
             print("\nSchema:")
             for field, dtype in self.metadata['schema'].items():
                 print(f"  - {field}: {dtype}")
@@ -1313,7 +1996,11 @@ class DatasetExplorer:
         
         if self.file_type == 'parquet':
             if field:
-                df_col = pd.read_parquet(self.filepath, columns=[field])
+                if self.is_directory:
+                    parts = [pd.read_parquet(p, columns=[field]) for p in self.working_files]
+                    df_col = pd.concat(parts, ignore_index=True)
+                else:
+                    df_col = pd.read_parquet(self.filepath, columns=[field])
                 col = df_col[field]
                 
                 stats['field'] = field
@@ -1340,7 +2027,9 @@ class DatasetExplorer:
                         stats['min_length'] = text_lengths.min()
                         stats['max_length'] = text_lengths.max()
             else:
-                df_sample = pd.read_parquet(self.filepath).head(10000)
+                # Sample from first file for whole-dataset stats; mirror legacy behavior.
+                source_for_sample = self.working_files[0] if self.is_directory else self.filepath
+                df_sample = pd.read_parquet(source_for_sample).head(10000)
                 stats['sample_size'] = len(df_sample)
                 stats['memory_usage_mb'] = df_sample.memory_usage(deep=True).sum() / (1024 * 1024)
                 
@@ -1353,9 +2042,19 @@ class DatasetExplorer:
         elif self.file_type == 'jsonl':
             field_values = []
             record_sizes = []
-            
-            # Use index for faster sampling if available
-            if self.line_positions:
+
+            if self.is_directory:
+                total = self.metadata.get('num_rows') or 0
+                sample_size = min(10000, total)
+                for i in range(sample_size):
+                    record = self.get_record_by_position(i)
+                    if record:
+                        # Approximate size from JSON re-encoding (per-file byte index
+                        # would require cross-file bookkeeping; close enough for stats).
+                        record_sizes.append(len(json.dumps(record)))
+                        if field and field in record:
+                            field_values.append(record[field])
+            elif self.line_positions:
                 sample_size = min(10000, len(self.line_positions))
                 for i in range(sample_size):
                     record = self.get_record_by_position(i)
@@ -1363,10 +2062,8 @@ class DatasetExplorer:
                         if i < len(self.line_positions) - 1:
                             record_size = self.line_positions[i+1] - self.line_positions[i]
                         else:
-                            # Estimate last record size
                             record_size = len(json.dumps(record))
                         record_sizes.append(record_size)
-                        
                         if field and field in record:
                             field_values.append(record[field])
             else:
@@ -1374,10 +2071,8 @@ class DatasetExplorer:
                     for i, line in enumerate(f):
                         if i >= 10000:
                             break
-                        
                         record = json.loads(line)
                         record_sizes.append(len(line))
-                        
                         if field and field in record:
                             field_values.append(record[field])
             
@@ -1450,46 +2145,73 @@ class DatasetExplorer:
         print("\n" + "="*60)
         print("Dataset Explorer - Interactive Mode")
         print("="*60)
-        print(f"Loaded: {self.original_filepath.name}")
-        
+        if self.is_directory:
+            print(f"Loaded directory: {self.original_filepath}")
+            print(f"  {self.metadata['num_files']:,} files, "
+                  f"{self.metadata['num_rows']:,} records total")
+        else:
+            print(f"Loaded: {self.original_filepath.name}")
+
         if self.is_compressed:
             print(f"Format: Compressed {self.original_filepath.suffix.upper()}")
             print(f"Working with decompressed temp file in: {self.filepath.parent}")
-        
-        if self.cache:
+        elif self.is_json_array:
+            print(f"Format: JSON array (converted to JSONL)")
+            print(f"Working with converted temp file in: {self.filepath.parent}")
+
+        if self.is_directory:
+            cached = sum(1 for c in self.file_caches if c and c.cache_filepath.exists())
+            print(f"Cache: {cached}/{len(self.file_caches)} files cached")
+        elif self.cache:
             if self.cache.cache_filepath.exists():
                 print(f"Cache: {self.cache.cache_filepath.name}")
             else:
                 print("Cache: Not yet created")
-        
-        print("Commands: info, sample, record, search, stats, export, cache, help, quit")
+
+        print("Commands: info, sample, record, findall, list, goto, stats, export, cache, help, quit")
         print("="*60)
         
         while True:
             try:
-                command = input("\n> ").strip().lower()
-                
+                raw_command = input("\n> ").strip()
+                command = raw_command.lower()
+
                 if command == 'quit' or command == 'exit':
                     print("Goodbye!")
                     break
                 
                 elif command == 'help':
                     print("\nAvailable commands:")
-                    print("  info                   - Show dataset information")
-                    print("  sample [n] [random]    - Sample n records (default 5)")
-                    print("  sample [n] full        - Sample n records without truncation")
-                    print("  record <number>        - Show specific record by number (0-based)")
-                    print("  record <number> full   - Show specific record without truncation")
-                    print("  findrec <byte_pos>     - Find record number at byte position")
-                    print("  search <query>         - Search for records")
-                    print("  stats [field]          - Show statistics")
-                    print("  export <n> <file>      - Export first n records to file")
-                    print("  export record <n> <f>  - Export specific record to file")
-                    print("  cache clear            - Clear cached metadata")
-                    print("  cache rebuild          - Rebuild cache with full index")
-                    print("  cache info             - Show cache information")
-                    print("  maxdisplay <width>     - Set maximum display width")
-                    print("  quit                   - Exit the program")
+                    print("  info                       - Show dataset information")
+                    print("  sample [n] [random]        - Sample n records (default 5)")
+                    print("  sample [n] full            - Sample n records without truncation")
+                    print("  record <number>            - Show specific record by number (0-based)")
+                    print("  record <number> full       - Show specific record without truncation")
+                    print("  findrec <byte_pos>         - Find record number at byte position")
+                    print("  findall <query>            - Find ALL matching records (steppable)")
+                    print("  findall -f <field> <query> - Find matches in a specific field")
+                    print("  findall -r <regex>         - Regex match (combine with -f as needed)")
+                    print("  findall -n <N> <query>     - Cap at N matches (fast peek; 0 = unlimited)")
+                    print("  findall -a t1 t2 ...       - AND match: every term must be present")
+                    print("                               (quote terms with spaces, e.g. -a \"foo bar\" baz)")
+                    print("  next, n                    - Step to next match")
+                    print("  prev, p                    - Step to previous match")
+                    print("  goto <n>                   - Jump to match #n (1-based)")
+                    print("  list [<n>|all] [<width>]   - List matches, one line each")
+                    print("                               (defaults: 200 matches, 100 chars)")
+                    print("  full                       - Toggle full (untruncated) display")
+                    print("  full on|off                - Set full display explicitly")
+                    print("  full <N>                   - Truncate at N chars (medium mode)")
+                    print("  compact                    - Use the current truncation width")
+                    print("  maxdisplay <N>             - Set truncation width (turns full off)")
+                    print("  results                    - Show current match status")
+                    print("  stats [field]              - Show statistics")
+                    print("  export <n> <file>          - Export first n records to file")
+                    print("  export record <n> <f>      - Export specific record to file")
+                    print("  cache clear                - Clear cached metadata")
+                    print("  cache rebuild              - Rebuild cache with full index")
+                    print("  cache info                 - Show cache information")
+                    print("  quit                       - Exit the program")
                 
                 elif command == 'info':
                     self.print_info()
@@ -1499,45 +2221,79 @@ class DatasetExplorer:
                     if len(parts) < 2:
                         print("Usage: cache [clear|rebuild|info]")
                         continue
-                    
+
+                    # Directory mode: per-file caches
+                    if self.is_directory:
+                        active_caches = [c for c in self.file_caches if c is not None]
+                        if not active_caches:
+                            print("Cache is disabled")
+                            continue
+                        if parts[1] == 'clear':
+                            for c in active_caches:
+                                c.clear()
+                            print(f"Cleared cache for {len(active_caches)} files.")
+                        elif parts[1] == 'rebuild':
+                            print("Rebuilding caches by re-running file preparation...")
+                            # Reset multi-file state and reinitialize
+                            self.source_files.clear()
+                            self.working_files.clear()
+                            self.file_record_counts.clear()
+                            self.file_line_positions.clear()
+                            self.file_metadata_list.clear()
+                            self.file_caches.clear()
+                            self.cum_record_counts = [0]
+                            self.rebuild_cache = True
+                            try:
+                                self._init_multi_file()
+                            finally:
+                                self.rebuild_cache = False
+                        elif parts[1] == 'info':
+                            cached_files = [c for c in active_caches if c.cache_filepath.exists()]
+                            total_kb = sum(c.cache_filepath.stat().st_size for c in cached_files) / 1024
+                            print(f"Per-file caches: {len(cached_files)}/{len(active_caches)} present")
+                            print(f"Total cache size: {total_kb:.1f} KB")
+                        else:
+                            print("Usage: cache [clear|rebuild|info]")
+                        continue
+
                     if parts[1] == 'clear':
                         if self.cache:
                             self.cache.clear()
                         else:
                             print("Cache is disabled")
-                    
+
                     elif parts[1] == 'rebuild':
                         if self.cache:
                             print("Rebuilding cache with full index...")
                             self.cache.clear()
-                            
+
                             if self.file_type == 'jsonl':
                                 line_count, self.line_positions = self._build_line_positions_with_progress(self.filepath)
                                 self.metadata['num_rows'] = line_count
                                 self.metadata['count_is_estimate'] = False
                                 self.metadata['has_index'] = True
                                 print(f"Total records: {line_count:,}")
-                                
+
                                 self.cache.save(self.metadata, self.line_positions)
                             else:
                                 self._load_metadata()
                         else:
                             print("Cache is disabled")
-                    
+
                     elif parts[1] == 'info':
                         if self.cache:
                             if self.cache.cache_filepath.exists():
                                 cache_size = self.cache.cache_filepath.stat().st_size
                                 print(f"Cache file: {self.cache.cache_filepath}")
                                 print(f"Cache size: {cache_size / 1024:.1f} KB")
-                                
+
                                 cache_data = self.cache.load()
                                 if cache_data:
                                     cached_time = cache_data.get('cached_at', 0)
                                     if cached_time:
                                         age_hours = (time.time() - cached_time) / 3600
                                         print(f"Cache age: {age_hours:.1f} hours")
-                                    
+
                                     if cache_data.get('line_positions'):
                                         print(f"Index entries: {len(cache_data['line_positions']):,}")
                             else:
@@ -1569,13 +2325,20 @@ class DatasetExplorer:
                     if len(parts) < 2:
                         print("Usage: maxdisplay <width>")
                         continue
-                    
+
                     try:
                         width = int(parts[1])
-                        self.max_display_width = width
-                        print(f"Maximum display width set to {width}.")
                     except ValueError:
                         print(f"Invalid width: {parts[1]}")
+                        continue
+                    if width <= 0:
+                        print("Width must be a positive integer.")
+                        continue
+                    self.max_display_width = width
+                    self.full_display = False
+                    print(f"Display: {self._display_mode_str()}")
+                    if self.search_state and self.search_state.get('indices'):
+                        self._show_current_match(truncate=not self.full_display)
                 
                 elif command.startswith('findrec') or command.startswith('findrecord'):
                     parts = command.split()
@@ -1626,37 +2389,209 @@ class DatasetExplorer:
                         print(f"\nShowing {len(df)} records{' (full text)' if not truncate else ''}:")
                     self.display_records(df, truncate=truncate)
                 
-                elif command.startswith('search'):
-                    parts = command[6:].strip().split()
-                    query = ""
-                    limit = 10
-                    
-                    if parts and parts[0].isdigit():
-                        limit = int(parts[0])
-                        query = ' '.join(parts[1:])
+                elif command.startswith('findall'):
+                    args_str = raw_command[len('findall'):].strip()
+                    try:
+                        tokens = shlex.split(args_str, posix=True)
+                    except ValueError as e:
+                        print(f"Could not parse arguments (unbalanced quotes?): {e}")
+                        continue
+                    field: Optional[str] = None
+                    use_regex = False
+                    set_full = False
+                    match_all = False
+                    limit: Optional[int] = None
+                    i = 0
+                    parse_error = None
+                    while i < len(tokens):
+                        tok = tokens[i]
+                        if tok in ('-f', '--field'):
+                            if i + 1 >= len(tokens):
+                                parse_error = "Missing field name after -f"
+                                break
+                            field = tokens[i + 1]
+                            i += 2
+                        elif tok in ('-r', '--regex'):
+                            use_regex = True
+                            i += 1
+                        elif tok in ('-a', '--all'):
+                            match_all = True
+                            i += 1
+                        elif tok in ('-n', '--limit'):
+                            if i + 1 >= len(tokens):
+                                parse_error = "Missing number after -n"
+                                break
+                            try:
+                                limit = int(tokens[i + 1])
+                            except ValueError:
+                                parse_error = f"Invalid limit: {tokens[i + 1]}"
+                                break
+                            if limit <= 0:
+                                limit = None  # 0 or negative means unlimited
+                            i += 2
+                        elif tok == 'full':
+                            set_full = True
+                            i += 1
+                        else:
+                            break
+                    if parse_error:
+                        print(parse_error)
+                        continue
+
+                    rest = tokens[i:]
+                    if match_all:
+                        terms = rest
                     else:
-                        query = ' '.join(parts)
-                    
-                    if not query:
-                        query = input("Enter search query: ")
-                    
-                    print(f"Searching for: {query} (limit: {limit})")
-                    results = self.search_records(query, max_results=limit)
-                    
-                    if len(results) > 0:
-                        print(f"\nFound {len(results)} matches:")
-                        if len(results) > 20:
-                            show_all = input(f"Show all {len(results)} results? (y/n, default=n): ").strip().lower() == 'y'
-                            if not show_all:
-                                results = results.head(20)
-                                print("Showing first 20 results...")
-                        
-                        truncate = input("Truncate long fields? (y/n, default=y): ").strip().lower() != 'n'
-                        self.display_records(results, truncate=truncate)
-                        print(f"\nTip: Use 'record <number>' to view any specific record in full")
+                        # Single-term mode: rejoin so spaces in the query are preserved
+                        # (mainly meaningful when the user did NOT quote — quoted terms
+                        # are already a single token).
+                        if len(rest) == 1:
+                            terms = rest
+                        elif len(rest) > 1:
+                            terms = [' '.join(rest)]
+                        else:
+                            terms = []
+
+                    if not terms:
+                        prompt_query = input("Enter search query: ").strip()
+                        if not prompt_query:
+                            print("Empty query, aborted.")
+                            continue
+                        terms = [prompt_query]
+
+                    if field is not None:
+                        resolved = self._resolve_field(field)
+                        if resolved is None:
+                            print(f"Field '{field}' not found. Available fields:")
+                            print(', '.join(self.metadata.get('columns') or []))
+                            continue
+                        field = resolved
+
+                    if len(terms) > 1:
+                        desc = f"Finding records matching ALL of {terms!r}"
                     else:
+                        desc = f"Finding records matching {terms[0]!r}"
+                    if field:
+                        desc += f" in field '{field}'"
+                    if use_regex:
+                        desc += " (regex)"
+                    if limit is not None:
+                        desc += f" (limit {limit:,})"
+                    print(desc + " ...")
+
+                    try:
+                        query_arg = terms if len(terms) > 1 else terms[0]
+                        match_indices = self.find_all_records(
+                            query_arg, field=field, regex=use_regex, limit=limit
+                        )
+                    except ValueError as e:
+                        print(f"Error: {e}")
+                        continue
+
+                    if not match_indices:
                         print("No matches found.")
-                
+                        self.search_state = None
+                        continue
+
+                    if set_full:
+                        self.full_display = True
+
+                    limit_hit = limit is not None and len(match_indices) >= limit
+                    self.search_state = {
+                        'indices': match_indices,
+                        'cursor': 0,
+                        'query': terms if len(terms) > 1 else terms[0],
+                        'field': field,
+                        'regex': use_regex,
+                        'limit_hit': limit_hit,
+                    }
+                    suffix = " (--limit hit, more may exist)" if limit_hit else ""
+                    print(f"Found {len(match_indices):,} matches{suffix}. "
+                          f"Showing match 1 (display: {self._display_mode_str()}).")
+                    print("Navigate: 'next'/'n', 'prev'/'p', 'goto <n>', 'list', 'results', 'full' to toggle.")
+                    self._show_current_match(truncate=not self.full_display)
+
+                elif command == 'next' or command == 'n':
+                    self._navigate_match(+1, truncate=not self.full_display)
+
+                elif command == 'prev' or command == 'p':
+                    self._navigate_match(-1, truncate=not self.full_display)
+
+                elif command.startswith('goto'):
+                    parts = command.split()
+                    if len(parts) < 2:
+                        print("Usage: goto <match_number>")
+                        continue
+                    if not self.search_state or not self.search_state.get('indices'):
+                        print("No active search results. Run 'findall <query>' first.")
+                        continue
+                    try:
+                        n = int(parts[1])
+                    except ValueError:
+                        print(f"Invalid match number: {parts[1]}")
+                        continue
+                    total = len(self.search_state['indices'])
+                    if n < 1 or n > total:
+                        print(f"Match number {n} out of range (1-{total:,})")
+                        continue
+                    self.search_state['cursor'] = n - 1
+                    self._show_current_match(truncate=not self.full_display)
+
+                elif command == 'full' or command.startswith('full '):
+                    parts = command.split()
+                    arg = parts[1] if len(parts) > 1 else None
+                    if arg in ('on', 'true', '1', 'yes'):
+                        self.full_display = True
+                    elif arg in ('off', 'false', '0', 'no'):
+                        self.full_display = False
+                    elif arg is None:
+                        self.full_display = not self.full_display
+                    else:
+                        # Try numeric width: 'full 1000' => truncate at 1000 chars
+                        try:
+                            width = int(arg)
+                        except ValueError:
+                            print("Usage: full [on|off|<width-in-chars>]   (no arg toggles)")
+                            continue
+                        if width <= 0:
+                            print("Width must be a positive integer.")
+                            continue
+                        self.max_display_width = width
+                        self.full_display = False
+                    print(f"Display: {self._display_mode_str()}")
+                    if self.search_state and self.search_state.get('indices'):
+                        self._show_current_match(truncate=not self.full_display)
+
+                elif command == 'compact':
+                    self.full_display = False
+                    print(f"Display: {self._display_mode_str()}")
+                    if self.search_state and self.search_state.get('indices'):
+                        self._show_current_match(truncate=not self.full_display)
+
+                elif command == 'results':
+                    if not self.search_state or not self.search_state.get('indices'):
+                        print("No active search results. Run 'findall <query>' first.")
+                        continue
+                    s = self.search_state
+                    total = len(s['indices'])
+                    line = f"Match {s['cursor'] + 1:,} of {total:,}"
+                    if s.get('limit_hit'):
+                        line += " (--limit hit)"
+                    line += f"  |  query: {s['query']!r}"
+                    if s.get('field'):
+                        line += f"  |  field: {s['field']}"
+                    if s.get('regex'):
+                        line += "  |  regex"
+                    line += f"  |  current record #: {s['indices'][s['cursor']]:,}"
+                    line += f"  |  display: {self._display_mode_str()}"
+                    print(line)
+
+                elif command == 'list' or command.startswith('list '):
+                    parsed = _parse_list_args(command.split()[1:])
+                    if parsed is not None:
+                        count, width = parsed
+                        self.list_matches(count=count, width=width)
+
                 elif command.startswith('stats'):
                     parts = command.split()
                     field = None
@@ -1778,7 +2713,8 @@ def main():
         ''')
     )
     
-    parser.add_argument('file', help='Path to parquet, jsonl, or compressed jsonl.zst file')
+    parser.add_argument('file', help='Path to a data file (.parquet, .jsonl, .json, .jsonl.zst) '
+                        'OR a directory of same-format files (alphabetical, top-level only)')
     parser.add_argument('--info', action='store_true', help='Show file info and exit')
     parser.add_argument('--quick', action='store_true', help='Quick mode - estimate counts for large files')
     parser.add_argument('--no-cache', action='store_true', help='Disable metadata caching')
@@ -1787,11 +2723,12 @@ def main():
     parser.add_argument('--record', type=int, metavar='NUMBER', help='Get specific record by number')
     parser.add_argument('--random', action='store_true', help='Random sampling')
     parser.add_argument('--full', action='store_true', help='Show full records without truncation')
-    parser.add_argument('--search', type=str, help='Search for query in records')
+    parser.add_argument('--search', type=str, help='Find records matching query (use --field to scope, --limit to cap)')
     parser.add_argument('--field', type=str, help='Specific field for search/stats')
     parser.add_argument('--stats', nargs='?', const='', help='Show statistics (optionally for specific field)')
     parser.add_argument('--export', type=str, help='Export results to file')
-    parser.add_argument('--limit', type=int, default=10, help='Max results for search (default: 10)')
+    parser.add_argument('--limit', type=int, default=10,
+                        help='Max matches to return for --search (default: 10; 0 = unlimited full scan)')
     
     args = parser.parse_args()
     
@@ -1834,17 +2771,39 @@ def main():
                 print(f"\nExported to {args.export}")
         
         elif args.search:
-            results = explorer.search_records(args.search, args.field, args.limit)
-            if len(results) > 0:
-                print(f"\nFound {len(results)} matches:")
+            field = args.field
+            if field is not None:
+                resolved = explorer._resolve_field(field)
+                if resolved is None:
+                    print(f"Field '{field}' not found. Available: "
+                          f"{', '.join(explorer.metadata.get('columns') or [])}")
+                    sys.exit(1)
+                field = resolved
+
+            limit = args.limit if args.limit and args.limit > 0 else None
+            indices = explorer.find_all_records(args.search, field=field, limit=limit)
+
+            if not indices:
+                print("No matches found.")
+            else:
+                limit_hit = limit is not None and len(indices) >= limit
+                suffix = " (--limit hit, more may exist)" if limit_hit else ""
+                print(f"\nFound {len(indices):,} matches{suffix}:")
+
+                rows = []
+                for idx in indices:
+                    rec_df = explorer.get_record(idx)
+                    rows.append(rec_df.iloc[0])
+                results = pd.DataFrame(rows)
+                results.index = indices
+                results._index_type = 'record_number'
+
                 explorer.display_records(results, truncate=not args.full)
                 print(f"\nTip: Use --record <number> to view any specific record")
-                
+
                 if args.export:
                     results.to_csv(args.export, index=False)
                     print(f"Exported to {args.export}")
-            else:
-                print("No matches found.")
         
         elif args.stats is not None:
             field = args.stats if args.stats else args.field
