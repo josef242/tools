@@ -1043,6 +1043,64 @@ def get_checkpoint_info(checkpoint_path):
 
     return step_number, token_count
 
+def _ls_listing(directory, args, default_suffix=None):
+    """Mimic basic `ls`.
+
+    args      : sequence of tokens after the command (e.g. ["-l"], ["*.txt"]).
+    -l        : long format (size + mtime, one entry per line).
+    pattern   : a glob like *.txt filters the listing and overrides default_suffix.
+    default_suffix : when no glob pattern is given, show only files ending with this
+                     (e.g. ".yaml"); None shows everything.
+    Returns a formatted string ready to print.
+    """
+    import fnmatch, shutil
+    from datetime import datetime
+
+    long_format = False
+    pattern = None
+    for tok in args:
+        if tok.startswith("-"):
+            if "l" in tok:
+                long_format = True
+        elif pattern is None:
+            pattern = tok
+
+    try:
+        entries = sorted(os.listdir(directory))
+    except OSError as e:
+        return f"   (cannot list directory: {e})"
+
+    if pattern is not None:
+        entries = [e for e in entries if fnmatch.fnmatch(e, pattern)]
+    elif default_suffix:
+        entries = [e for e in entries if e.endswith(default_suffix)]
+
+    if not entries:
+        return "   (no matching files)"
+
+    if long_format:
+        lines = []
+        for name in entries:
+            path = os.path.join(directory, name)
+            try:
+                st = os.stat(path)
+                size = st.st_size
+                mtime = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
+                flag = "/" if os.path.isdir(path) else " "
+            except OSError:
+                size, mtime, flag = 0, "?", " "
+            lines.append(f"   {size:>10}  {mtime}  {name}{flag}")
+        return "\n".join(lines)
+
+    # Column layout (fill rows left-to-right within the terminal width).
+    width = shutil.get_terminal_size((80, 24)).columns
+    col_w = max(len(e) for e in entries) + 2
+    ncols = max(1, width // col_w)
+    rows = []
+    for i in range(0, len(entries), ncols):
+        rows.append("".join(e.ljust(col_w) for e in entries[i:i + ncols]).rstrip())
+    return "\n".join(rows)
+
 class Generate(CommandFramework):
     def __init__(self, prefix, preferred_gpu=None):
         super().__init__(prefix)
@@ -1083,7 +1141,7 @@ class Generate(CommandFramework):
         self.add_command("coherence_sweep", self.cmd_coherence_sweep, "Run coherence-metric sweep across training checkpoints")
         self.add_command("export", self.cmd_export, "Export the model to a .bin file")
         self.add_command("exit", self.cmd_exit, "Exit the program")
-        self.add_command("ls", self.cmd_ls, "List all prompt files")
+        self.add_command("ls", self.cmd_ls, "List prompt files (ls, ls -l, ls *.txt)")
         self.add_command("cd", self.cmd_cd, "Change prompt file directory")
         self.add_command("mmlu", self.cmd_mmlu, "Run MMLU evaluation")
         self.add_command("batch", self.cmd_batch, "Change evaluation batch size")
@@ -1365,10 +1423,9 @@ class Generate(CommandFramework):
         print("")  # Newline after streaming
         return None  # Text already displayed via streaming
 
-    def cmd_ls(self) -> str:
+    def cmd_ls(self, *args) -> str:
         print(f"Files in {self.prompt_file_dir}:")
-        for file in os.listdir(self.prompt_file_dir):
-            print(f"   {file}")
+        print(_ls_listing(self.prompt_file_dir, args))
         return ""
 
     def cmd_cd(self) -> str:
@@ -1749,7 +1806,7 @@ class Generate(CommandFramework):
             if done < len(prompts) and elapsed > 0:
                 eta = elapsed * (len(prompts) - done) / done
                 eta_m, eta_s = divmod(int(eta), 60)
-                eta_str = f"sweep ETA {eta_m}m{eta_s:02d}s"
+                eta_str = f"ckpt ETA {eta_m}m{eta_s:02d}s"
             else:
                 eta_str = "done"
             # Overprint the live token-counter with the completion summary.
@@ -1869,6 +1926,13 @@ class Generate(CommandFramework):
                 return
 
         # Main loop
+        sweep_t0 = time.time()
+        completed = 0  # checkpoints actually evaluated this run (excludes skips/errors)
+        # Running sums of the headline metrics across completed checkpoints, so we
+        # can print a running mean as the sweep progresses.
+        running_sums = {"nonword_rate": 0.0,
+                        "new_entities_introduced_median": 0.0,
+                        "cross_span_entity": 0.0}
         for i, (step, tokens, milestone) in enumerate(steps_to_evaluate):
             checkpoint_path = os.path.join(log_dir, f"model_step_{step:06d}.pt")
             if not os.path.exists(checkpoint_path):
@@ -1925,6 +1989,33 @@ class Generate(CommandFramework):
                     f"new_ent_med={(a.get('new_entities_introduced_median') or 0):.1f}  "
                     f"xspan={(a.get('cross_span_entity') or 0):.3f}"
                 )
+
+                # Running mean of the headline metrics across all checkpoints
+                # completed so far this run.
+                completed += 1
+                for k in running_sums:
+                    running_sums[k] += (a.get(k) or 0)
+                logger.print_and_log(
+                    f"  running mean ({completed} ckpt{'s' if completed != 1 else ''}): "
+                    f"nonword={running_sums['nonword_rate']/completed:.4f}  "
+                    f"new_ent_med={running_sums['new_entities_introduced_median']/completed:.1f}  "
+                    f"xspan={running_sums['cross_span_entity']/completed:.3f}"
+                )
+
+                # Sweep-level elapsed + ETA across remaining checkpoints, based on
+                # average wall-clock per completed checkpoint.
+                sweep_elapsed = time.time() - sweep_t0
+                el_m, el_s = divmod(int(sweep_elapsed), 60)
+                remaining = len(steps_to_evaluate) - (i + 1)
+                if completed > 0 and remaining > 0:
+                    eta = (sweep_elapsed / completed) * remaining
+                    eta_m, eta_s = divmod(int(eta), 60)
+                    logger.print_and_log(
+                        f"  elapsed {el_m}m{el_s:02d}s  sweep ETA {eta_m}m{eta_s:02d}s "
+                        f"({remaining} ckpt{'s' if remaining != 1 else ''} left)"
+                    )
+                else:
+                    logger.print_and_log(f"  elapsed {el_m}m{el_s:02d}s")
 
             except Exception as e:
                 logger.print_and_log(f"Error evaluating step {step}: {str(e)}")

@@ -35,6 +35,64 @@ def log(msg):
     else:
         print(msg)
 
+def _ls_listing(directory, args, default_suffix=None):
+    """Mimic basic `ls`.
+
+    args      : sequence of tokens after the command (e.g. ["-l"], ["*.txt"]).
+    -l        : long format (size + mtime, one entry per line).
+    pattern   : a glob like *.txt filters the listing and overrides default_suffix.
+    default_suffix : when no glob pattern is given, show only files ending with this
+                     (e.g. ".yaml"); None shows everything.
+    Returns a formatted string ready to print.
+    """
+    import fnmatch, shutil
+    from datetime import datetime
+
+    long_format = False
+    pattern = None
+    for tok in args:
+        if tok.startswith("-"):
+            if "l" in tok:
+                long_format = True
+        elif pattern is None:
+            pattern = tok
+
+    try:
+        entries = sorted(os.listdir(directory))
+    except OSError as e:
+        return f"   (cannot list directory: {e})"
+
+    if pattern is not None:
+        entries = [e for e in entries if fnmatch.fnmatch(e, pattern)]
+    elif default_suffix:
+        entries = [e for e in entries if e.endswith(default_suffix)]
+
+    if not entries:
+        return "   (no matching files)"
+
+    if long_format:
+        lines = []
+        for name in entries:
+            path = os.path.join(directory, name)
+            try:
+                st = os.stat(path)
+                size = st.st_size
+                mtime = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
+                flag = "/" if os.path.isdir(path) else " "
+            except OSError:
+                size, mtime, flag = 0, "?", " "
+            lines.append(f"   {size:>10}  {mtime}  {name}{flag}")
+        return "\n".join(lines)
+
+    # Column layout (fill rows left-to-right within the terminal width).
+    width = shutil.get_terminal_size((80, 24)).columns
+    col_w = max(len(e) for e in entries) + 2
+    ncols = max(1, width // col_w)
+    rows = []
+    for i in range(0, len(entries), ncols):
+        rows.append("".join(e.ljust(col_w) for e in entries[i:i + ncols]).rstrip())
+    return "\n".join(rows)
+
 # Lazy loading for PyTorch - only import when needed
 TORCH_LOADED = False
 torch = None
@@ -1470,11 +1528,10 @@ if __name__ == '__main__':
                             config["top_p"] = float(top_p)
                             getting_input = True
                         elif user_response.startswith("/ls"):
-                            # Only print *.yaml files
+                            # ls [-l] [pattern]; defaults to *.yaml when no pattern given
+                            ls_args = user_response.split()[1:]
                             print(f"Files in {config['prompt_dir']}:")
-                            for file in os.listdir(config['prompt_dir']):
-                                if file.endswith(".yaml"):
-                                    print(f"   {file}")
+                            print(_ls_listing(config['prompt_dir'], ls_args, default_suffix=".yaml"))
                             getting_input = True
                         elif user_response.startswith("/cd"):
                             val = input(f"Prompt directory [{config['prompt_dir']}]: ")
@@ -1522,7 +1579,7 @@ if __name__ == '__main__':
                             print(f"/temp   - Set temperature [{config['temperature']}]")
                             print(f"/top    - Set top_p [{config['top_p']}]")
                             print(f"/name   - Change user names [{', '.join(usr_names)}]")
-                            print(f"/ls     - List files in prompt directory")
+                            print(f"/ls     - List prompt files (/ls, /ls -l, /ls *.txt)")
                             print(f"/cd     - Change prompt directory [{config['prompt_dir']}]")
                             print(f"/prompt - Display the full prompt")
                             print(f"/force  - Toggle force response mode [{config['force_response']}]")
