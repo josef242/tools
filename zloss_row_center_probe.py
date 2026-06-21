@@ -18,14 +18,27 @@ but logZ = logsumexp absorbs it directly: logZ = h.mu + logZ_centered.
 So dreadnought's logZ ~ 490 (vs ~7-11 normal) may be mostly a CE-INVISIBLE
 common-mode gauge offset, not real classifier growth. This script measures it.
 
-THREE OUTCOMES
---------------
-1. logZ_c collapses to tens/single digits -> logZ was mostly softmax gauge drift
-   the model can't see; logit scale was fine. (Best case.)
-2. hd_wn mostly vanishes after centering (||W_c||_F << ||W||, s1(W_c) << s1(W))
-   -> the dominant singular mode is a common-offset mode, not classifier growth.
-3. s1(W_c) and logZ_c still enormous -> genuine centered-margin growth; a real
-   head-norm brake conversation is then warranted.
+INTERPRETATION (calibrated against the MEASURED KEEL family baseline)
+--------------------------------------------------------------------
+The decision we reached (two reviews, Nexus thread 139/146): the large raw logZ
+is dominated by a CE-invisible common-mode GAUGE (~78% of raw logZ; u1.ones~0.93
+on every checkpoint), and the *centered* margin logZ_c is HEALTHY at the family
+baseline. The action is GAUGE SUBTRACTION (row-centering, function-preserving),
+NOT a head-norm brake — the dn1 10k->14k experiment showed a blunt head-WD brake
+causes low-rank collapse (logZ_c +94%, spectral_conc_c 0.26->0.48), not a fix.
+
+So we classify logZ_c against the empirically measured family band, NOT the old
+conventional ~10 expectation:
+  KEEL_LOGZC_FAMILY_BAND = (60, 130)  # coherent runs: dn2 83-108, mf 110, dn1@10k 73
+1. logZ_c collapses to a small fraction of raw logZ -> logZ was mostly the gauge;
+   logit scale was fine. Gauge subtraction cleans it up for free.
+2. centering removes most of the weight norm / top mode -> the dominant mode is
+   the common-offset gauge. Gauge subtraction.
+3. logZ_c sits IN the family band -> normal KEEL centered margin (NOT pathology).
+   Gauge subtraction only; do NOT brake the head.
+4. logZ_c sits well ABOVE the family band -> anomalous centered-margin inflation
+   (e.g. dn1@14k under lethal WD) -> investigate the cause; braking is what
+   CAUSED this in the dn1 case, so a brake is NOT the remedy.
 
 Run:
     python zloss_row_center_probe.py --ckpt <path-or-dir> [--ntokens 8192]
@@ -54,6 +67,13 @@ logger._instance.set_logdir("./logs")
 logger._instance.set_default_logfile("zloss_probe_log.txt")
 logger._instance.set_rank(0)
 import neo_common as nc  # noqa: E402
+
+# Empirically measured logZ_c band for coherent KEEL-family runs (Nexus thread
+# 139/146): dn2 83-108, mf-low-lr 110, healthy dn1@10k 73. The verdict compares
+# logZ_c against THIS, not the old conventional ~10 expectation. Outside the band
+# (high) flags anomaly to INVESTIGATE — not "brake the head" (braking is what
+# inflated dn1@14k to 140 via low-rank collapse).
+KEEL_LOGZC_FAMILY_BAND = (60.0, 130.0)
 
 
 def resolve_ckpt(path):
@@ -424,15 +444,33 @@ def run(ckpt, ntokens, want_aux, out_path, weights_only=False, groups_override=N
                          f"(centered/raw = {logZc_mean/logZ_mean:.3f})")
     logger.print_and_log(f"  ||W_c||/||W|| = {fro_frac:.3f}   s1_c/s1 = {s1_frac:.3f}   "
                          f"u1.ones = {wm['u1_dot_ones']:.3f}")
-    if logZc_mean < 0.2 * logZ_mean:
-        logger.print_and_log("  => OUTCOME 1: logZ is MOSTLY a CE-invisible common-mode offset "
-                             "(centered logZ collapses). Logit scale was largely fine.")
-    elif fro_frac < 0.3 or s1_frac < 0.3:
-        logger.print_and_log("  => OUTCOME 2: head 'growth' is mostly the common-offset mode "
-                             "(centering removes most of the weight norm / top mode).")
-    else:
-        logger.print_and_log("  => OUTCOME 3: centered logZ AND centered head norm are STILL large "
-                             "-> genuine centered-margin growth; head-norm brake warranted.")
+    # Classify the GAUGE share first, then place logZ_c against the measured
+    # KEEL family band. Action is gauge subtraction (row-centering) in the normal
+    # cases; we do NOT recommend head-norm braking (dn1@14k showed braking causes
+    # low-rank collapse, not a fix — Nexus 139/146).
+    # ABSOLUTE band classification takes priority — logZ_c vs the measured family
+    # band is the definitive signal regardless of what fraction of raw logZ the
+    # gauge happens to be (dn1@14k's gauge is 81% of raw logZ, yet its logZ_c=140
+    # is the anomaly — a raw-fraction-first test would wrongly wave it through).
+    lo, hi = KEEL_LOGZC_FAMILY_BAND
+    gauge_share = 1.0 - (logZc_mean / logZ_mean)   # fraction of raw logZ that is the gauge
+    logger.print_and_log(f"  gauge share of raw logZ = {gauge_share:.1%}   "
+                         f"KEEL family logZ_c band = [{lo:.0f}, {hi:.0f}]")
+    if logZc_mean > hi:
+        logger.print_and_log(f"  => logZ_c {logZc_mean:.1f} is ABOVE the family band "
+                             f"[{lo:.0f},{hi:.0f}] -> anomalous centered-margin inflation "
+                             "(cf. dn1@14k=140 under lethal head-WD). ACTION: INVESTIGATE the "
+                             "cause — note braking is what CAUSED this in dn1, so it is NOT the remedy.")
+    elif logZc_mean < lo:
+        logger.print_and_log(f"  => logZ_c {logZc_mean:.1f} is BELOW the family band "
+                             f"[{lo:.0f},{hi:.0f}] -> margin not yet developed (early ckpt) or "
+                             "actively compressed (e.g. z-loss on). ACTION: gauge subtraction; "
+                             "expect logZ_c to drift up toward the band as the LM objective settles.")
+    else:  # IN band -> normal KEEL centered margin
+        logger.print_and_log(f"  => logZ_c {logZc_mean:.1f} is IN the KEEL family band "
+                             f"[{lo:.0f},{hi:.0f}] -> NORMAL centered margin, not pathology "
+                             f"(gauge is {gauge_share:.0%} of raw logZ). "
+                             "ACTION: gauge subtraction only; do NOT brake the head.")
 
     if out_path:
         with open(out_path, "w") as f:
