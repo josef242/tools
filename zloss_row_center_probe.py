@@ -75,6 +75,18 @@ import neo_common as nc  # noqa: E402
 # inflated dn1@14k to 140 via low-rank collapse).
 KEEL_LOGZC_FAMILY_BAND = (60.0, 130.0)
 
+# Centered head-geometry collapse thresholds, calibrated on the family series
+# (Nexus #156/#157). effective_rank_c is the SHARP collapse detector: healthy
+# KEEL heads cluster ~8-14, dead dn1@14k = 4.3. spec_conc_c corroborates
+# (healthy ~0.26-0.33, dead 0.48). Per Rook's verdict priority, GEOMETRY ranks
+# ABOVE the logZ_c band — a collapsed head can sit at any logZ_c (dn1@14k was at
+# 140), so eff_rank_c must be checked first or the band test waves a dead head
+# through. A geometry collapse is NOT a z-loss problem (z-loss moves scale, not
+# rank) — action is investigate/rollback, never engage z-loss.
+EFF_RANK_C_WARN = 7.0
+EFF_RANK_C_CRIT = 6.0
+SPEC_CONC_C_CORROB = 0.45
+
 
 def resolve_ckpt(path):
     if os.path.isfile(path):
@@ -469,8 +481,35 @@ def run(ckpt, ntokens, want_aux, out_path, weights_only=False, groups_override=N
     # is the anomaly — a raw-fraction-first test would wrongly wave it through).
     lo, hi = KEEL_LOGZC_FAMILY_BAND
     gauge_share = 1.0 - (logZc_mean / logZ_mean)   # fraction of raw logZ that is the gauge
+    eff_rank_c = wm.get("effective_rank_c")
+    spec_conc_c = wm.get("spectral_concentration_c")
+    logger.print_and_log(f"  centered geometry: eff_rank_c = {eff_rank_c:.2f}   "
+                         f"spec_conc_c = {spec_conc_c:.3f}   "
+                         f"(healthy ~8-14 / <0.33; dead dn1@14k = 4.3 / 0.48)")
     logger.print_and_log(f"  gauge share of raw logZ = {gauge_share:.1%}   "
                          f"KEEL family logZ_c band = [{lo:.0f}, {hi:.0f}]")
+    # GEOMETRY FIRST (Rook verdict priority §1-2): a low-rank collapse is the
+    # definitive pathology and can sit at ANY logZ_c, so eff_rank_c is checked
+    # before the band. A collapse is a geometry failure -> investigate/rollback
+    # recent interventions (head-WD, LR, optimizer-state). NEVER engage z-loss
+    # (it moves scale, not rank, and would mask the collapse).
+    geom_collapsed = eff_rank_c is not None and eff_rank_c < EFF_RANK_C_WARN
+    if eff_rank_c is not None and eff_rank_c < EFF_RANK_C_CRIT:
+        logger.print_and_log(
+            f"  => [CRITICAL] eff_rank_c {eff_rank_c:.2f} < {EFF_RANK_C_CRIT:.0f} -> "
+            f"CENTERED HEAD COLLAPSE (cf. dead dn1@14k=4.3). The head lost rank; "
+            f"this is a GEOMETRY failure. ACTION: investigate/rollback recent "
+            f"interventions (head-WD, LR changes, optimizer-state events). Do NOT "
+            f"engage z-loss — it lowers scale, not rank, and would mask the collapse.")
+    elif geom_collapsed:
+        _corr = (spec_conc_c is not None and spec_conc_c > SPEC_CONC_C_CORROB)
+        logger.print_and_log(
+            f"  => [WARNING] eff_rank_c {eff_rank_c:.2f} < {EFF_RANK_C_WARN:.0f} "
+            f"(corroboration spec_conc_c>{SPEC_CONC_C_CORROB}: {'YES' if _corr else 'no'}) -> "
+            f"approaching low-rank collapse. ACTION: watch for persistence across "
+            f"2+ val cadences; flag recent interventions. NOT a z-loss action.")
+    # logZ_c band classification (scale axis) — printed regardless, but secondary
+    # to geometry. A healthy-rank head above the band is a SCALE issue.
     if logZc_mean > hi:
         logger.print_and_log(f"  => logZ_c {logZc_mean:.1f} is ABOVE the family band "
                              f"[{lo:.0f},{hi:.0f}] -> anomalous centered-margin inflation "
