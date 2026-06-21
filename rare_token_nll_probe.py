@@ -143,25 +143,27 @@ def _quantiles(x, qs=(0.05, 0.25, 0.5, 0.75, 0.95)):
     return {f"p{int(q*100)}": torch.quantile(xf, q).item() for q in qs}
 
 
-def per_token_metrics(h, W, targets, pad_id, tok_chunk=1024):
+def per_token_metrics(h, W, targets, pad_id, tok_chunk=1024, metrics_dev=None):
     """For each valid position compute NLL, target prob, target rank, and entropy
     of p(.|x), plus per-position logZ_c. Chunked over tokens so the [chunk, V]
     logits fit on the GPU. Memory-lean: one [c,V] logits tensor at a time, results
     accumulated on CPU. tok_chunk=1024 -> ~128MB/logits tensor.
 
-    Device-correct under model sharding: the head (W) may live on a non-cuda:0
-    shard, so we do all chunk math on W's device and move inputs there per chunk."""
-    wdev = W.device
-    Wf = W.float()
+    metrics_dev: device to run the matmul/metrics on. Under balanced model
+    sharding the head's shard is PACKED FULL (accelerate fills each card to its
+    forced limit), so computing the [c,V] logits there OOMs even at small chunks.
+    Pass a model-shard-FREE GPU (e.g. the top visible card) so the metrics get a
+    clean card. Defaults to W.device if None (fine for single-GPU runs)."""
+    dev = metrics_dev if metrics_dev is not None else W.device
+    # Copy only what the matmul needs onto the (free) metrics device: the head
+    # weight (~335MB fp32) and the gathered hidden rows. Boolean indexing on CPU
+    # (masks tiny; h/targets/W may be on three different shards).
+    Wf = W.detach().float().to(dev)
     V, D = Wf.shape
     mu = Wf.mean(dim=0)
-    # Under sharding, h / targets / W can each live on DIFFERENT devices (h on the
-    # norm shard, targets on cuda:0, W on the head shard). Do the boolean indexing
-    # on CPU (masks are tiny) to avoid a cross-device index error, then move the
-    # gathered rows to the head's device for the matmul.
     valid = (targets != pad_id).cpu()
-    h_v = h.cpu()[valid].to(wdev)
-    tgt_v = targets.cpu()[valid].to(wdev)
+    h_v = h.cpu()[valid].to(dev)
+    tgt_v = targets.cpu()[valid].to(dev)
     Nv = h_v.shape[0]
     # Accumulate on CPU to keep GPU headroom for the [c,V] logits.
     nll = torch.empty(Nv); tprob = torch.empty(Nv); trank = torch.empty(Nv)
@@ -192,7 +194,7 @@ def per_token_metrics(h, W, targets, pad_id, tok_chunk=1024):
 
 
 def run(ckpt, ntokens, out_path, config_path=None, groups_override=None, seed=0,
-        shard_strategy="none", tok_chunk=1024):
+        shard_strategy="none", tok_chunk=1024, metrics_device=None):
     device = nc.detect_device(None)
     path = resolve_ckpt(ckpt)
     step = int(re.search(r"_(\d+)\.pt", os.path.basename(path)).group(1)) \
@@ -225,7 +227,19 @@ def run(ckpt, ntokens, out_path, config_path=None, groups_override=None, seed=0,
     logger.print_and_log(f"captured h: {tuple(h.shape)} rms={h.pow(2).mean().sqrt().item():.4f}")
 
     W = model.output.weight
-    pm, tgt_v, valid = per_token_metrics(h, W, targets, pad_id, tok_chunk=tok_chunk)
+    # Pick a metrics device. Under balanced sharding the model packs the lowest
+    # cards full, so the metrics [c,V] logits OOM there — run them on a free card.
+    # Default: the highest visible CUDA index (most likely shard-free); override
+    # with --metrics-device. Single-GPU/CPU: falls back to W's device.
+    if metrics_device is not None:
+        mdev = torch.device(metrics_device)
+    elif torch.cuda.is_available() and torch.cuda.device_count() > 1 and shard_strategy != "none":
+        mdev = torch.device(f"cuda:{torch.cuda.device_count() - 1}")
+    else:
+        mdev = W.device
+    logger.print_and_log(f"computing per-token metrics on {mdev} (head on {W.device})")
+    pm, tgt_v, valid = per_token_metrics(h, W, targets, pad_id, tok_chunk=tok_chunk,
+                                         metrics_dev=mdev)
     # bucketing on CPU (cheap; aligns with the CPU-accumulated pm tensors)
     masks, counts, _ = panel_freq_buckets(targets.cpu(), pad_id)
 
@@ -285,10 +299,14 @@ def main():
                          "can't hold the 23GB model + logits chunk).")
     ap.add_argument("--tok-chunk", type=int, default=1024,
                     help="per-token-metrics chunk size (lower if OOM in the metrics step)")
+    ap.add_argument("--metrics-device", default=None,
+                    help="device for the per-token metrics matmul, e.g. 'cuda:3' "
+                         "(default under --shard: highest visible CUDA index, which "
+                         "is shard-free; the model-shard cards are packed full).")
     a = ap.parse_args()
     go = [g.strip() for g in a.groups.split(",")] if a.groups else None
     run(a.ckpt, a.ntokens, a.out, config_path=a.config, groups_override=go, seed=a.seed,
-        shard_strategy=a.shard, tok_chunk=a.tok_chunk)
+        shard_strategy=a.shard, tok_chunk=a.tok_chunk, metrics_device=a.metrics_device)
 
 
 if __name__ == "__main__":
