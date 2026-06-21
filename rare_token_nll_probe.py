@@ -155,9 +155,13 @@ def per_token_metrics(h, W, targets, pad_id, tok_chunk=1024):
     Wf = W.float()
     V, D = Wf.shape
     mu = Wf.mean(dim=0)
-    valid = (targets != pad_id)
-    h_v = h[valid].to(wdev)
-    tgt_v = targets[valid].to(wdev)
+    # Under sharding, h / targets / W can each live on DIFFERENT devices (h on the
+    # norm shard, targets on cuda:0, W on the head shard). Do the boolean indexing
+    # on CPU (masks are tiny) to avoid a cross-device index error, then move the
+    # gathered rows to the head's device for the matmul.
+    valid = (targets != pad_id).cpu()
+    h_v = h.cpu()[valid].to(wdev)
+    tgt_v = targets.cpu()[valid].to(wdev)
     Nv = h_v.shape[0]
     # Accumulate on CPU to keep GPU headroom for the [c,V] logits.
     nll = torch.empty(Nv); tprob = torch.empty(Nv); trank = torch.empty(Nv)
