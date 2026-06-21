@@ -198,13 +198,28 @@ def weight_metrics(W):
     ramp = torch.arange(V, device=Wf.device, dtype=torch.float32)
     ramp = (ramp - ramp.mean()) / (ramp.std() + 1e-8)
     u1_dot_ramp = abs(torch.dot(u1, ramp / (V ** 0.5)).item())
+    # Item B centered-geometry health metrics, from the centered spectrum we
+    # already have (sv_c). Field names match common_fsdp2.row_center.
+    # centered_geometry() so the offline series is comparable to live telemetry:
+    #   effective_rank_c = participation ratio (sum lambda)^2 / sum lambda^2
+    #   small_sigma_pN   = N-th percentile of ASCENDING singular values
+    lam_c = sv_c ** 2
+    eff_rank_c = ((lam_c.sum() ** 2) / (lam_c ** 2).sum()).item()
+    sv_c_asc = sv_c.flip(0)
+    Dc = sv_c_asc.numel()
+    small_c = {}
+    for p in (1, 5, 10):
+        k = max(0, min(Dc - 1, int(round((p / 100.0) * (Dc - 1)))))
+        small_c[f"small_sigma_p{p}"] = sv_c_asc[k].item()
     return {
         "V": V, "D": D,
         "mu_norm": mu.norm().item(),
         "W_fro": fro, "Wc_fro": fro_c, "Wc_fro_frac": fro_c / fro,
         "s1": s1, "s1_c": s1_c, "s1_c_frac": s1_c / s1,
         "spectral_concentration": conc, "spectral_concentration_c": conc_c,
+        "effective_rank_c": eff_rank_c,
         "u1_dot_ones": u1_dot_ones, "u1_dot_idramp": u1_dot_ramp,
+        **small_c,
     }, mu, Wc
 
 
