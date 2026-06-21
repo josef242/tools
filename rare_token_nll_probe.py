@@ -143,18 +143,21 @@ def _quantiles(x, qs=(0.05, 0.25, 0.5, 0.75, 0.95)):
     return {f"p{int(q*100)}": torch.quantile(xf, q).item() for q in qs}
 
 
-def per_token_metrics(h, W, targets, pad_id, device, tok_chunk=1024):
+def per_token_metrics(h, W, targets, pad_id, tok_chunk=1024):
     """For each valid position compute NLL, target prob, target rank, and entropy
     of p(.|x), plus per-position logZ_c. Chunked over tokens so the [chunk, V]
-    logits fit on the GPU. Memory-lean: the 23GB model already fills most of a
-    16GB 4080, so we keep the per-chunk peak small (one [c,V] logits tensor at a
-    time; results accumulated on CPU). tok_chunk=1024 -> ~128MB/logits tensor."""
+    logits fit on the GPU. Memory-lean: one [c,V] logits tensor at a time, results
+    accumulated on CPU. tok_chunk=1024 -> ~128MB/logits tensor.
+
+    Device-correct under model sharding: the head (W) may live on a non-cuda:0
+    shard, so we do all chunk math on W's device and move inputs there per chunk."""
+    wdev = W.device
     Wf = W.float()
     V, D = Wf.shape
     mu = Wf.mean(dim=0)
-    valid = targets != pad_id
-    h_v = h[valid]
-    tgt_v = targets[valid]
+    valid = (targets != pad_id)
+    h_v = h[valid].to(wdev)
+    tgt_v = targets[valid].to(wdev)
     Nv = h_v.shape[0]
     # Accumulate on CPU to keep GPU headroom for the [c,V] logits.
     nll = torch.empty(Nv); tprob = torch.empty(Nv); trank = torch.empty(Nv)
@@ -184,16 +187,18 @@ def per_token_metrics(h, W, targets, pad_id, device, tok_chunk=1024):
     return dict(nll=nll, tprob=tprob, trank=trank, ent=ent, logZc=logZc), tgt_v.cpu(), valid
 
 
-def run(ckpt, ntokens, out_path, config_path=None, groups_override=None, seed=0):
+def run(ckpt, ntokens, out_path, config_path=None, groups_override=None, seed=0,
+        shard_strategy="none", tok_chunk=1024):
     device = nc.detect_device(None)
     path = resolve_ckpt(ckpt)
     step = int(re.search(r"_(\d+)\.pt", os.path.basename(path)).group(1)) \
         if re.search(r"_(\d+)\.pt", os.path.basename(path)) else None
-    logger.print_and_log(f"=== rare-token NLL probe: {os.path.basename(path)} on {device} ===")
+    logger.print_and_log(f"=== rare-token NLL probe: {os.path.basename(path)} on {device} "
+                         f"(shard={shard_strategy}) ===")
 
     t0 = time.time()
     model, enc, cfg = nc.load_model_and_tokenizer(
-        path, device=device, half_precision=True, shard_strategy="none", use_keel=None,
+        path, device=device, half_precision=True, shard_strategy=shard_strategy, use_keel=None,
     )
     model.eval()
     pad_id = int(getattr(cfg, "pad_id", 0) or 0)
@@ -216,8 +221,9 @@ def run(ckpt, ntokens, out_path, config_path=None, groups_override=None, seed=0)
     logger.print_and_log(f"captured h: {tuple(h.shape)} rms={h.pow(2).mean().sqrt().item():.4f}")
 
     W = model.output.weight
-    pm, tgt_v, valid = per_token_metrics(h, W, targets, pad_id, device)
-    masks, counts, _ = panel_freq_buckets(targets, pad_id)
+    pm, tgt_v, valid = per_token_metrics(h, W, targets, pad_id, tok_chunk=tok_chunk)
+    # bucketing on CPU (cheap; aligns with the CPU-accumulated pm tensors)
+    masks, counts, _ = panel_freq_buckets(targets.cpu(), pad_id)
 
     def bucket_block(mask):
         idx = torch.where(mask)[0]
@@ -268,9 +274,17 @@ def main():
     ap.add_argument("--groups", default=None, help="comma-separated group override")
     ap.add_argument("--seed", type=int, default=0, help="panel seed (SAME across ckpts!)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--shard", default="none",
+                    help="model shard strategy across visible GPUs: 'none' (single "
+                         "device, default) | 'balanced' (split the model across all "
+                         "CUDA_VISIBLE_DEVICES via accelerate — use when one card "
+                         "can't hold the 23GB model + logits chunk).")
+    ap.add_argument("--tok-chunk", type=int, default=1024,
+                    help="per-token-metrics chunk size (lower if OOM in the metrics step)")
     a = ap.parse_args()
     go = [g.strip() for g in a.groups.split(",")] if a.groups else None
-    run(a.ckpt, a.ntokens, a.out, config_path=a.config, groups_override=go, seed=a.seed)
+    run(a.ckpt, a.ntokens, a.out, config_path=a.config, groups_override=go, seed=a.seed,
+        shard_strategy=a.shard, tok_chunk=a.tok_chunk)
 
 
 if __name__ == "__main__":
