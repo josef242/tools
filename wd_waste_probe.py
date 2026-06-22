@@ -129,6 +129,46 @@ def _depth_buckets(per_layer):
     return out
 
 
+def norm_growth(series, recent_frac=0.25):
+    """Per-matrix ||W|| growth analysis — THE test for benign-equilibrium vs
+    pathological ramping. For each tracked matrix returns:
+      w_first, w_last, growth_pct (last/first - 1),
+      recent_slope_per_kstep: linear ||W|| slope over the last `recent_frac` of
+        the run, normalized to per-1000-steps and as a %/kstep of current ||W||
+        — a CURRENTLY-flat norm => equilibrium even if it grew early.
+    Flat recent slope = equilibrium; persistent positive slope = still ramping."""
+    if len(series) < 2:
+        return {}
+    keys = set()
+    for s in series:
+        keys.update(s['per_layer'].keys())
+    out = {}
+    n = len(series)
+    r0 = max(0, int(n * (1 - recent_frac)))
+    recent = series[r0:]
+    for k in keys:
+        pts = [(s['step'], s['per_layer'][k]['w_norm']) for s in series if k in s['per_layer']]
+        if len(pts) < 2:
+            continue
+        w_first, w_last = pts[0][1], pts[-1][1]
+        rpts = [(st, w) for st, w in pts if st >= recent[0]['step']]
+        slope_per_k = 0.0
+        if len(rpts) >= 2:
+            # simple least-squares slope of w vs step, scaled to per-1000-steps
+            xs = [p[0] for p in rpts]; ys = [p[1] for p in rpts]
+            mx = sum(xs) / len(xs); my = sum(ys) / len(ys)
+            num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+            den = sum((x - mx) ** 2 for x in xs)
+            slope_per_k = (num / den * 1000.0) if den > 0 else 0.0
+        out[k] = {
+            'w_first': w_first, 'w_last': w_last,
+            'growth_pct': (w_last / w_first - 1.0) if w_first > 0 else 0.0,
+            'recent_slope_per_kstep': slope_per_k,
+            'recent_slope_pct_per_kstep': (slope_per_k / w_last) if w_last > 0 else 0.0,
+        }
+    return out
+
+
 def report(series, wd):
     if not series:
         print("no diagnostic records found")
@@ -169,6 +209,29 @@ def report(series, wd):
     for k, v in body[:8]:
         print(f"  {k:>12}: wd_share={v['wd_grad_share']:6.1%}  "
               f"||W||={v['w_norm']:8.1f}  wd_grad={v['wd_grad_mag']:.3f}  loss_grad={v['g_norm']:.4f}")
+
+    # === THE RAMPING TEST: ||W|| growth, full-run and RECENT slope ===
+    # benign equilibrium = flat (recent slope ~0); pathological = still climbing.
+    ng = norm_growth(series)
+    body_ng = {k: v for k, v in ng.items() if k.startswith('L')}
+    print("\n=== ||W|| RAMPING TEST (equilibrium vs still-climbing) ===")
+    # Body summary: how many matrices are essentially flat recently?
+    if body_ng:
+        slopes = [v['recent_slope_pct_per_kstep'] for v in body_ng.values()]
+        flat = sum(1 for s in slopes if abs(s) < 0.005)   # <0.5%/kstep = flat
+        climbing = sum(1 for s in slopes if s >= 0.005)
+        print(f"  BODY ({len(body_ng)} matrices): {flat} flat (<0.5%/kstep), "
+              f"{climbing} still climbing (>=0.5%/kstep). "
+              f"median recent slope {sorted(slopes)[len(slopes)//2]*100:+.3f}%/kstep")
+        print("  Top-8 body matrices by RECENT ||W|| slope (the ones still ramping, if any):")
+        for k, v in sorted(body_ng.items(), key=lambda kv: kv[1]['recent_slope_pct_per_kstep'], reverse=True)[:8]:
+            print(f"    {k:>12}: ||W|| {v['w_first']:7.1f} -> {v['w_last']:7.1f} "
+                  f"(full {v['growth_pct']:+6.1%})  recent {v['recent_slope_pct_per_kstep']*100:+.3f}%/kstep")
+    # Head explicitly (the known accumulator)
+    if 'output' in ng:
+        o = ng['output']
+        print(f"  OUTPUT HEAD: ||W|| {o['w_first']:.1f} -> {o['w_last']:.1f} "
+              f"(full {o['growth_pct']:+.1%})  recent {o['recent_slope_pct_per_kstep']*100:+.3f}%/kstep")
 
 
 def main():
