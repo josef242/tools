@@ -1156,6 +1156,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user", type=str, default="User", help="User name(s)")
     parser.add_argument("--context_len", type=int, default=4096, help="Context length")
     parser.add_argument("--gen_size", type=int, default=128, help="Max new tokens")
+    parser.add_argument("--envelope_compat", action="store_true",
+                       help="Legacy-faithful RoPE (pre-2026-07-02 checkpoints: dn2/dn4/keelhaul "
+                            "era). Reproduces the corrupted tables those models trained under; "
+                            "never use for wizard-era models.")
 
     args = parser.parse_args()
 
@@ -1215,10 +1219,10 @@ def load_model(config: dict, args: argparse.Namespace) -> ModelWrapper:
         # Note: Transformer/ModelArgs imported dynamically in neo_common based on checkpoint version
         from tokenizer_abstraction import get_tokenizer
         import neo_common as nc
-        
+
         device = nc.detect_device(preferred_gpu=args.gpu)
         config["device"] = device
-        
+
         model, enc, model_cfg = nc.load_model_and_tokenizer(
             config["checkpoint"],
             device=device,
@@ -1229,7 +1233,8 @@ def load_model(config: dict, args: argparse.Namespace) -> ModelWrapper:
             shard_strategy=args.shard_strategy,
             preferred_gpu=args.gpu,
             max_memory_per_gpu=args.max_memory,
-            use_keel=args.use_keel or None
+            use_keel=args.use_keel or None,
+            envelope_compat=bool(getattr(args, 'envelope_compat', False)),
         )
         
         if hasattr(model_cfg, "max_seq_len"):

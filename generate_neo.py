@@ -2199,6 +2199,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user", type=str, default="Josef, Joseph",)
     parser.add_argument("--use_keel", action="store_true",
                         help="Enable KEEL (Highway-style Post-LN) - use when checkpoint was trained with use_keel but config doesn't include it")
+    parser.add_argument("--envelope_compat", action="store_true",
+                        help="Legacy-faithful RoPE: reproduce the pre-2026-07-02 corrupted tables "
+                             "(cos=0, sin=cos-table) that every older FSDP2 checkpoint was TRAINED "
+                             "under. Use for dn2/dn4/keelhaul-era models; never for wizard-era ones.")
 
     # HellaSwag sweep arguments
     parser.add_argument("--hella_sweep", action="store_true",
@@ -2255,6 +2259,10 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(seed)
 
     args = parse_args()
+
+    # Legacy-faithful RoPE: module-level default covers EVERY load call site
+    # (interactive /load, sweeps, one-offs) without threading the flag through.
+    nc.ENVELOPE_COMPAT_DEFAULT = bool(getattr(args, 'envelope_compat', False))
 
     # Require model_path for all modes
     if not args.model_path:
