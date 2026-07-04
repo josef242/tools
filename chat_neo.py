@@ -1161,15 +1161,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--context_len", type=int, default=4096, help="Context length")
     parser.add_argument("--gen_size", type=int, default=128, help="Max new tokens")
     parser.add_argument("--envelope_compat", action="store_true",
-                       help="Legacy-faithful RoPE (pre-2026-07-02 checkpoints: dn2/dn4/keelhaul "
-                            "era). Reproduces the corrupted tables those models trained under; "
-                            "never use for wizard-era models.")
+                       help="Force LEGACY/corrupted RoPE regardless of checkpoint version. Default "
+                            "is AUTO: checkpoints < v4.0 (or without a rope_fixed marker) already "
+                            "get legacy RoPE, so you rarely need this.")
+    parser.add_argument("--fixed_rope", action="store_true",
+                       help="Force FIXED (correct) RoPE even on an old-version checkpoint — e.g. the "
+                            "wizard checkpoints saved before you resume the runs to v4.0. Overrides AUTO.")
     parser.add_argument("--no_spec", action="store_true",
                        help="Disable MTP self-speculative decoding (default: AUTO — on for "
                             "checkpoints with an MTP module; greedy outputs are bit-identical "
                             "either way, spec is just ~1+acceptance times faster).")
 
     args = parser.parse_args()
+
+    if getattr(args, 'envelope_compat', False) and getattr(args, 'fixed_rope', False):
+        parser.error("--envelope_compat and --fixed_rope are mutually exclusive")
 
     if args.tensor_split and args.tensor_split != 'auto':
         try:
@@ -1242,7 +1248,10 @@ def load_model(config: dict, args: argparse.Namespace) -> ModelWrapper:
             preferred_gpu=args.gpu,
             max_memory_per_gpu=args.max_memory,
             use_keel=args.use_keel or None,
-            envelope_compat=bool(getattr(args, 'envelope_compat', False)),
+            # TRI-STATE: True=force legacy, False=force fixed, None=AUTO (key off
+            # the checkpoint's version / rope_fixed marker in neo_common).
+            envelope_compat=(True if getattr(args, 'envelope_compat', False)
+                             else False if getattr(args, 'fixed_rope', False) else None),
         )
         
         if hasattr(model_cfg, "max_seq_len"):

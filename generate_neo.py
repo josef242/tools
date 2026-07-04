@@ -2200,9 +2200,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use_keel", action="store_true",
                         help="Enable KEEL (Highway-style Post-LN) - use when checkpoint was trained with use_keel but config doesn't include it")
     parser.add_argument("--envelope_compat", action="store_true",
-                        help="Legacy-faithful RoPE: reproduce the pre-2026-07-02 corrupted tables "
-                             "(cos=0, sin=cos-table) that every older FSDP2 checkpoint was TRAINED "
-                             "under. Use for dn2/dn4/keelhaul-era models; never for wizard-era ones.")
+                        help="Force LEGACY/corrupted RoPE (cos=0, sin=cos-table) regardless of "
+                             "checkpoint version. Default is AUTO: checkpoints < v4.0 (or without a "
+                             "rope_fixed marker) already get legacy RoPE, so you rarely need this.")
+    parser.add_argument("--fixed_rope", action="store_true",
+                        help="Force FIXED (correct) RoPE even on an old-version checkpoint. Use for "
+                             "correct-RoPE checkpoints that still carry a pre-4.0 version (e.g. the "
+                             "wizard checkpoints saved before you resume the runs). Overrides AUTO.")
     parser.add_argument("--no_spec", action="store_true",
                         help="Disable MTP self-speculative decoding (default: AUTO — on for "
                              "checkpoints with an MTP module; greedy outputs are bit-identical "
@@ -2264,9 +2268,19 @@ if __name__ == "__main__":
 
     args = parse_args()
 
-    # Legacy-faithful RoPE: module-level default covers EVERY load call site
-    # (interactive /load, sweeps, one-offs) without threading the flag through.
-    nc.ENVELOPE_COMPAT_DEFAULT = bool(getattr(args, 'envelope_compat', False))
+    # RoPE mode: module-level default covers EVERY load call site (interactive
+    # /load, sweeps, one-offs) without threading the flag through. TRI-STATE:
+    # None=AUTO (key off checkpoint version/rope_fixed), True=force legacy,
+    # False=force fixed.
+    if getattr(args, 'envelope_compat', False) and getattr(args, 'fixed_rope', False):
+        logger.print_and_log("Error: --envelope_compat and --fixed_rope are mutually exclusive")
+        sys.exit(1)
+    if getattr(args, 'envelope_compat', False):
+        nc.ENVELOPE_COMPAT_DEFAULT = True    # force legacy/corrupted RoPE
+    elif getattr(args, 'fixed_rope', False):
+        nc.ENVELOPE_COMPAT_DEFAULT = False   # force fixed RoPE
+    else:
+        nc.ENVELOPE_COMPAT_DEFAULT = None    # AUTO
     if getattr(args, 'no_spec', False):
         nc.SPEC_DECODE_DEFAULT = False   # force classic decode at every call site
 
