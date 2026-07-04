@@ -2203,6 +2203,10 @@ def parse_args() -> argparse.Namespace:
                         help="Legacy-faithful RoPE: reproduce the pre-2026-07-02 corrupted tables "
                              "(cos=0, sin=cos-table) that every older FSDP2 checkpoint was TRAINED "
                              "under. Use for dn2/dn4/keelhaul-era models; never for wizard-era ones.")
+    parser.add_argument("--no_spec", action="store_true",
+                        help="Disable MTP self-speculative decoding (default: AUTO — on for "
+                             "checkpoints with an MTP module; greedy outputs are bit-identical "
+                             "either way, spec is just faster).")
 
     # HellaSwag sweep arguments
     parser.add_argument("--hella_sweep", action="store_true",
@@ -2263,6 +2267,8 @@ if __name__ == "__main__":
     # Legacy-faithful RoPE: module-level default covers EVERY load call site
     # (interactive /load, sweeps, one-offs) without threading the flag through.
     nc.ENVELOPE_COMPAT_DEFAULT = bool(getattr(args, 'envelope_compat', False))
+    if getattr(args, 'no_spec', False):
+        nc.SPEC_DECODE_DEFAULT = False   # force classic decode at every call site
 
     # Require model_path for all modes
     if not args.model_path:

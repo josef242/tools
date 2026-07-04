@@ -535,7 +535,11 @@ class CustomModelWrapper(ModelWrapper):
             print_prompt=False,
             return_stop_info=return_stop_info,
             pretty_print=pretty_print,
-            role_names=role_names
+            role_names=role_names,
+            # None = AUTO: MTP checkpoints decode speculatively (drop-in: same
+            # features, greedy bit-identical, ~1+acceptance x faster); set via
+            # --no_spec to force the classic engine.
+            spec=getattr(self, 'spec_mode', None),
         )
 
     def get_context_length(self) -> int:
@@ -1160,6 +1164,10 @@ def parse_args() -> argparse.Namespace:
                        help="Legacy-faithful RoPE (pre-2026-07-02 checkpoints: dn2/dn4/keelhaul "
                             "era). Reproduces the corrupted tables those models trained under; "
                             "never use for wizard-era models.")
+    parser.add_argument("--no_spec", action="store_true",
+                       help="Disable MTP self-speculative decoding (default: AUTO — on for "
+                            "checkpoints with an MTP module; greedy outputs are bit-identical "
+                            "either way, spec is just ~1+acceptance times faster).")
 
     args = parser.parse_args()
 
@@ -1242,7 +1250,9 @@ def load_model(config: dict, args: argparse.Namespace) -> ModelWrapper:
             log(f"Context length from model config: {config['context_len']} tokens")
         
         wrapper = CustomModelWrapper(model, enc, config["context_len"])
-    
+        # spec decode: None = AUTO (on for MTP checkpoints), False = forced off
+        wrapper.spec_mode = False if getattr(args, 'no_spec', False) else None
+
     return wrapper
 
 # ============================================================================
@@ -1419,6 +1429,9 @@ if __name__ == '__main__':
                             return_stop_info=True
                         )
                         print(f"\n[DEBUG] Stop reason: {stop_info['reason']}, detail: {stop_info['detail']}, tokens: {stop_info['tokens_generated']}")
+                        if 'spec' in stop_info:
+                            sp = stop_info['spec']
+                            print(f"[DEBUG] Spec decode: {sp['accepted']}/{sp['rounds']} drafts accepted ({sp['acceptance']:.1%})")
                     else:
                         answer = session.model_wrapper.generate(
                             prompt=prompt,
