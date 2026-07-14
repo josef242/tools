@@ -26,7 +26,10 @@ import numpy as np
 import os, sys
 import re, tempfile, uuid
 import hashlib
-import zstandard as zstd
+try:
+    import zstandard as zstd   # only needed for .jsonl.zst inputs
+except ImportError:
+    zstd = None
 from pathlib import Path
 
 # ------------------------- Common Files -------------------------
@@ -37,6 +40,7 @@ if common_path not in sys.path:
 # 1.  Prepare the tokenizer abstraction layer
 # ---------------------------------------------------------------------------
 from tokenizer_abstraction import get_tokenizer
+from doc_shard_writer import DocShardWriter
 
 # Language detection (add after other imports)
 try:
@@ -80,6 +84,8 @@ def iter_json_lines(path: str) -> Iterator[dict]:
 
 def iter_json_lines_zst(path: str) -> Iterator[dict]:
     import io
+    if zstd is None:
+        _die(f"{path}: .jsonl.zst input requires the 'zstandard' package (pip install zstandard)")
     with open(path, 'rb') as fh:
         dctx = zstd.ZstdDecompressor()
         with dctx.stream_reader(fh) as reader:
@@ -371,6 +377,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--format", dest="template",help="Full Python format string (overrides --field)")
     p.add_argument("--batch-size", type=int, default=1000,help="Rows per parquet batch (default 1000)")
     p.add_argument("--shard-size", type=int, default=int(1e8),help="Tokens per .npy shard (default 1e8)")
+    p.add_argument("--val-holdout", type=int, default=50_000_000,
+                   help="route the first ~N tokens of documents (arrival order ≈ corpus "
+                        "head) to a *_val_* split (default 50M; 0 disables). Doc-aligned.")
+    p.add_argument("--coprime", type=int, default=6,
+                   help="force gcd(train shard count, this)=1 at close by splitting the "
+                        "largest shard at a doc boundary (kills loader orbit-sharing; "
+                        "6 covers world sizes 2^a*3^b)")
+    p.add_argument("--min-shard", type=int, default=5_000_000,
+                   help="merge a final shard smaller than this into its neighbor")
+    p.add_argument("--legacy-river", action="store_true",
+                   help="old behavior: fixed-size river shards that split documents at "
+                        "shard boundaries, no val holdout, no manifest. Escape hatch only.")
     p.add_argument("--dtype", choices=["uint16", "uint32", "auto"],default="auto",help="Token dtype for .npy shards (uint16, uint32, or auto by vocab size)")
     p.add_argument("--label", default="data",help="Filename label prefix (default: data)")
     p.add_argument("--tokenizer", choices=["llama","hf","tiktoken","claude"], default="tiktoken")
@@ -764,7 +782,16 @@ def main() -> None:
 
     print(f"Found {len(files)} file(s); spawning {args.workers} workers…")
     t0          = time.time()
-    shard       = ShardWriter(args.output_dir, args.label, args.shard_size, dtype)
+    if args.legacy_river:
+        shard = ShardWriter(args.output_dir, args.label, args.shard_size, dtype)
+    else:
+        # Doc-aligned writer (2026-07-14): whole documents per shard, val holdout
+        # from the stream head, coprime shard count, rechunk-schema manifest.
+        # BOS comes from the tokenizer object — never a literal (bos-audit rule).
+        shard = DocShardWriter(
+            args.output_dir, args.label, bos_id=tok.bos_id,
+            cap=args.shard_size, min_shard=args.min_shard,
+            coprime=args.coprime, val_holdout=args.val_holdout, dtype=dtype)
 
     # ── pool (spawn on Windows) ──────────────────────────────────────────
     ctx = mp.get_context("spawn")
