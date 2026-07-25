@@ -27,6 +27,32 @@ training-viable data for KEEL. First 11.3GB = DeepMind PG19 (Gutenberg); rest = 
 - transformers/tokenizers/sentencepiece/protobuf/tiktoken installed in the env.
 - HF model cached: sentence-transformers/all-MiniLM-L6-v2 (22.7M), distilbert-base-uncased (66M).
 
+## ⚠ TWO DIFFERENT "CURRENT" CORPORA — do not conflate (clarified 2026-07-25)
+- **PRODUCTION = v8.** wizard101 trains on it, tokenized as `books_cleaned_aligned`
+  (`pre_tokenize.py ~/data/book.v8.jsonl .../books_cleaned`, ~/.bash_history:98; consumed at
+  `mara_fsdp2/configs/wizard101.yaml:246`, weight 28.0). Switched in mid-run at step 10,750.
+- **CORPUS OF RECORD = v11.** The research/ablation endpoint. NEVER PROMOTED to any training run.
+- These are SIBLINGS, not successors. v11 is not "newer than" v8 and v8 is not stale.
+
+THE LADDER IS NOT A CHAIN. v1->v6 is sequential; then run_v7/v8/v9/v10.py EACH read V1 + V6
+independently with a different pass set:
+    v1 -> v2 -> v3 -> v4 -> v5 -> v6 -+-> v7
+                                      +-> v8   <- PRODUCTION
+                                      +-> v9   <- ablation arm A (junk in)
+                                      +-> v10 -> v11  <- ablation arm B (junk removed)
+
+## DISK CLEANUP 2026-07-25 (~600GB reclaimed; 82% -> 48% on rig root)
+DELETED, with the reasoning that made each safe:
+- book.v2/v3/v4/v5.jsonl (399.7G) — pure intermediates on the v1->v6 chain. Their end product
+  v6 is RETAINED, and nothing but the next run_vN.py ever read them. Rebuild if ever needed:
+  run_v2.py -> run_v3.py -> run_v4.py -> run_v5.py -> patch_restore.py, from v1.
+- book.v9.shuf.jsonl / book.v11.shuf.jsonl (199.9G) — full shuffled copies made only to cut the
+  ablation subsets. The subsets that were actually tokenized (book.v{9,11}.shuf.18k.jsonl,
+  18,000 docs each, shuffle-ALIGNED across arms) are RETAINED, as are the tokenized shards
+  books_abl_v{9,11} (2.51B / 2.50B tokens). Reshuffling would not reproduce the same order.
+RETAINED and why: v1 (root of everything, 32 refs), v6 (common ancestor of v7-v10),
+v8 (PRODUCTION), v9 + v10 + v11 (ablation arms / corpus of record), v9.1 (see below).
+
 ## CORPUS VERSION LADDER (all in ~/data/, ledgered + reversible)
 - book.jsonl        original (untouched)
 - book.v1.jsonl     de-redaction: reversed an Ofcom-list word filter (<DWnn> tokens); 270,903
@@ -355,6 +381,21 @@ RESIDUAL (2 books, logged not chased — different/deeper mechanisms, rabbit-hol
 NOT YET PROPAGATED TO CORPUS: this is a sentinel3 (boundary) change; the live corpus of record (v11) was built
 with the OLD boundary. Baking it in requires regenerating boundary -> cross-book -> within-book (multi-hour,
 boundary is the expensive pass). DECISION PENDING (Josef): regen now, or batch with the v12 pure-syntax pass.
+
+### book.v9.1.jsonl STATUS (2026-07-25) — HOLD, unaudited, NOT known-bad
+Built 2026-07-22 by run_v9_1.py using the improved (Jul-16) sentinel3 above. Retained on disk.
+It was briefly written off as "defective" during the halted v11.1 build. That call does not hold up:
+- The test applied was "does current sentinel3 reproduce the shipped v9 bit-for-bit" (0/60 changed
+  docs matched). That test CANNOT pass by construction — the guard was deliberately changed, and the
+  60 docs it disagrees on are precisely the ones it was designed to affect. Non-reproduction here is
+  the intended signal, not a regression.
+- Two boilerplate alarms raised against it were then measured down to nothing: `guns_any.py` over
+  1,200 docs finds 6 lines with >=2 markers in v8, v9 AND v11 alike (0.005/doc, identical across all
+  three), and those 6 are legitimate copyright-registry catalog text, not boilerplate. No version leaks.
+TO SETTLE IT, run the same measurement that validated the guard, not a reproduction check:
+  audit_v9_1.py, then harm_per_pass.py against the 100-book gold set, and compare REAL-content-destroyed
+  vs v9's 681. If it holds at ~681 with junk-cut flat, v9.1 is the better boundary output and v12 should
+  be built on it.
 
 ## HARM-PER-PASS (harm_per_pass.py, 2026-07-15) — content eaten vs gold, the metric we care most about
 Applied each pass's REAL filter to 100 gold tail books (content_end labels), counted chars removed from
