@@ -1,0 +1,44 @@
+{
+  "version": "book.v1.jsonl", "batch": 1, "judge": "code (Claude)", "date": "2026-07-12",
+  "scale": "noise_frac = est. fraction of segment chars that are non-content noise",
+  "segments": [
+    {"line": 4036,  "region": "pg19", "seg": "head", "noise_frac": 0.05, "types": ["pg_credit", "blank_pile"], "note": "1-line 'Produced by Al Haines'; title page itself is legit"},
+    {"line": 21660, "region": "pg19", "seg": "head", "noise_frac": 0.15, "types": ["pg_credit_verbose", "period_publisher_note"], "note": "5-line modern credit w/ MOOC chatter inside an 1873 book"},
+    {"line": 27170, "region": "pg19", "seg": "head", "noise_frac": 0.45, "types": ["pg_credit", "toc"], "note": "credit + long Contents list; Preface is legit content"},
+    {"line": 1772,  "region": "pg19", "seg": "head", "noise_frac": 0.35, "types": ["pg_credit_url", "edition_pricing_block"], "note": "pgdp.net credit + 1885 Seaside Library pricing/copyright block"},
+    {"line": 8184,  "region": "pg19", "seg": "mid",  "noise_frac": 0.0,  "types": [], "note": "clean prose"},
+    {"line": 3653,  "region": "pg19", "seg": "mid",  "noise_frac": 0.0,  "types": [], "note": "clean prose"},
+    {"line": 17907, "region": "pg19", "seg": "mid",  "noise_frac": 1.0,  "types": ["publisher_catalog", "equals_markup"], "note": "entire segment is a Cassell & Co. book catalog with =bold= markup - in a children's rhymes book"},
+    {"line": 27170, "region": "pg19", "seg": "mid",  "noise_frac": 0.0,  "types": [], "note": "dialect prose - dialect is signal, not noise"},
+    {"line": 14943, "region": "pg19", "seg": "tail", "noise_frac": 0.0,  "types": [], "note": "clean prose ending"},
+    {"line": 16369, "region": "pg19", "seg": "tail", "noise_frac": 0.05, "types": ["dense_quote_formatting"], "note": "theology quote blocks; legit content"},
+    {"line": 23725, "region": "pg19", "seg": "tail", "noise_frac": 0.10, "types": ["footnote_tag", "star_separator"], "note": "[Footnote 4:...] + ***** separator"},
+    {"line": 11267, "region": "pg19", "seg": "tail", "noise_frac": 1.0,  "types": ["publisher_catalog"], "note": "novelization ads: '12mo, cloth. Illustrated. 50 cents.' repeated"},
+    {"line": 59140,  "region": "books3", "seg": "head", "noise_frac": 0.70, "types": ["copyright_block", "publisher_address", "isbn", "legal_disclaimer", "toc"], "note": "AuthorHouse address+phone+ISBNs+stock-imagery disclaimer"},
+    {"line": 38956,  "region": "books3", "seg": "head", "noise_frac": 0.50, "types": ["markdown_headers", "star_separator_md", "copyright_block", "editorial_blurb"], "note": "'# ## * ' markdown artifacts + Duke Classics legal + blurb"},
+    {"line": 131885, "region": "books3", "seg": "head", "noise_frac": 0.30, "types": ["acknowledgments", "lyric_epigraph", "dedication"], "note": "acks + Dylan lyrics + dedication before ch.1; borderline classes"},
+    {"line": 34143,  "region": "books3", "seg": "head", "noise_frac": 0.90, "types": ["copyright_block", "cip_block", "publisher_address"], "note": "full Library of Congress CIP incl. marketing summary"},
+    {"line": 104330, "region": "books3", "seg": "mid", "noise_frac": 0.0,  "types": [], "note": "clean prose"},
+    {"line": 115332, "region": "books3", "seg": "mid", "noise_frac": 0.02, "types": ["underscore_markup"], "note": "play text; _italic_ stage directions - markup chars only"},
+    {"line": 158621, "region": "books3", "seg": "mid", "noise_frac": 0.0,  "types": [], "note": "clean prose"},
+    {"line": 197207, "region": "books3", "seg": "mid", "noise_frac": 0.01, "types": ["escape_artifact"], "note": "'31⁄2\\-' escaped hyphen artifact in fractions"},
+    {"line": 197483, "region": "books3", "seg": "tail", "noise_frac": 0.60, "types": ["about_author", "book_list", "review_plea", "toc_tail"], "note": "'please leave a review' + Chapter 1..n TOC dump at end"},
+    {"line": 30724,  "region": "books3", "seg": "tail", "noise_frac": 0.95, "types": ["bibliography", "about_author"], "note": "reference list + author bios"},
+    {"line": 180196, "region": "books3", "seg": "tail", "noise_frac": 0.50, "types": ["index", "notes"], "note": "usage-manual index; borderline - reference book so index is arguably content"},
+    {"line": 119341, "region": "books3", "seg": "tail", "noise_frac": 0.95, "types": ["photo_credits", "copyright_block", "publisher_promo"], "note": "S&S speakers bureau promo, jacket design credits, LC data"}
+  ],
+  "aggregates": {
+    "pg19":   {"head_mean": 0.25, "mid_mean": 0.25, "tail_mean": 0.29,
+               "mid_note": "mid/tail means skewed by publisher-catalog books (2/8 segments 100% noise); median mid = 0.0"},
+    "books3": {"head_mean": 0.60, "mid_mean": 0.01, "tail_mean": 0.75}
+  },
+  "new_noise_classes_discovered": [
+    "pg19 in-book publisher catalogs with =equals= bold markup (can occupy whole pages mid/tail)",
+    "books3 review pleas ('please leave a review')",
+    "books3 CIP cataloging blocks with embedded marketing summaries",
+    "books3 photo/design credits blocks",
+    "books3 markdown artifact headers '# ## *' from epub conversion",
+    "escaped '\\-' hyphen artifacts",
+    "lyric epigraphs (rights-sensitive, borderline content)"
+  ]
+}

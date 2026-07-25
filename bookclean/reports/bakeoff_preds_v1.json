@@ -1,0 +1,1082 @@
+{
+ "27838": {
+  "sentinel": {
+   "content_start": 1350,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 307,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 307,
+   "content_end": 6871
+  },
+  "hybrid": {
+   "content_start": 1350,
+   "content_end": 8000
+  }
+ },
+ "30470": {
+  "sentinel": {
+   "content_start": 1801,
+   "content_end": 5342
+  },
+  "prosefall": {
+   "content_start": 1801,
+   "content_end": 6030
+  },
+  "lexis": {
+   "content_start": 2473,
+   "content_end": 5342
+  },
+  "hybrid": {
+   "content_start": 1801,
+   "content_end": 5342
+  }
+ },
+ "36760": {
+  "sentinel": {
+   "content_start": 335,
+   "content_end": 2753
+  },
+  "prosefall": {
+   "content_start": 325,
+   "content_end": 7115
+  },
+  "lexis": {
+   "content_start": 325,
+   "content_end": 7115
+  },
+  "hybrid": {
+   "content_start": 335,
+   "content_end": 2753
+  }
+ },
+ "38372": {
+  "sentinel": {
+   "content_start": 960,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 376,
+   "content_end": 1344
+  },
+  "lexis": {
+   "content_start": 376,
+   "content_end": 2646
+  },
+  "hybrid": {
+   "content_start": 960,
+   "content_end": 1344
+  }
+ },
+ "48319": {
+  "sentinel": {
+   "content_start": 12000,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 12000,
+   "content_end": 6774
+  },
+  "lexis": {
+   "content_start": 12000,
+   "content_end": 6774
+  },
+  "hybrid": {
+   "content_start": 12000,
+   "content_end": 6774
+  }
+ },
+ "48770": {
+  "sentinel": {
+   "content_start": 982,
+   "content_end": 6471
+  },
+  "prosefall": {
+   "content_start": 966,
+   "content_end": 7940
+  },
+  "lexis": {
+   "content_start": 966,
+   "content_end": 7940
+  },
+  "hybrid": {
+   "content_start": 982,
+   "content_end": 6471
+  }
+ },
+ "51632": {
+  "sentinel": {
+   "content_start": 2698,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 940,
+   "content_end": 7500
+  },
+  "lexis": {
+   "content_start": 940,
+   "content_end": 7500
+  },
+  "hybrid": {
+   "content_start": 2698,
+   "content_end": 7500
+  }
+ },
+ "53229": {
+  "sentinel": {
+   "content_start": 426,
+   "content_end": 0
+  },
+  "prosefall": {
+   "content_start": 426,
+   "content_end": 7529
+  },
+  "lexis": {
+   "content_start": 426,
+   "content_end": 7529
+  },
+  "hybrid": {
+   "content_start": 426,
+   "content_end": 0
+  }
+ },
+ "55783": {
+  "sentinel": {
+   "content_start": 2216,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 2216,
+   "content_end": 4678
+  },
+  "lexis": {
+   "content_start": 2216,
+   "content_end": 4678
+  },
+  "hybrid": {
+   "content_start": 2216,
+   "content_end": 4678
+  }
+ },
+ "56746": {
+  "sentinel": {
+   "content_start": 936,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 918,
+   "content_end": 7891
+  },
+  "lexis": {
+   "content_start": 918,
+   "content_end": 7891
+  },
+  "hybrid": {
+   "content_start": 936,
+   "content_end": 7891
+  }
+ },
+ "58667": {
+  "sentinel": {
+   "content_start": 1276,
+   "content_end": 5185
+  },
+  "prosefall": {
+   "content_start": 0,
+   "content_end": 7658
+  },
+  "lexis": {
+   "content_start": 0,
+   "content_end": 7658
+  },
+  "hybrid": {
+   "content_start": 1276,
+   "content_end": 5185
+  }
+ },
+ "60457": {
+  "sentinel": {
+   "content_start": 40,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 40,
+   "content_end": 7974
+  },
+  "lexis": {
+   "content_start": 40,
+   "content_end": 7974
+  },
+  "hybrid": {
+   "content_start": 40,
+   "content_end": 7974
+  }
+ },
+ "61732": {
+  "sentinel": {
+   "content_start": 3444,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 326,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 326,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 3444,
+   "content_end": 8000
+  }
+ },
+ "67704": {
+  "sentinel": {
+   "content_start": 0,
+   "content_end": 5358
+  },
+  "prosefall": {
+   "content_start": 0,
+   "content_end": 7980
+  },
+  "lexis": {
+   "content_start": 0,
+   "content_end": 7980
+  },
+  "hybrid": {
+   "content_start": 0,
+   "content_end": 5358
+  }
+ },
+ "73177": {
+  "sentinel": {
+   "content_start": 1996,
+   "content_end": 7160
+  },
+  "prosefall": {
+   "content_start": 1996,
+   "content_end": 7592
+  },
+  "lexis": {
+   "content_start": 1996,
+   "content_end": 7592
+  },
+  "hybrid": {
+   "content_start": 1996,
+   "content_end": 7160
+  }
+ },
+ "75880": {
+  "sentinel": {
+   "content_start": 2365,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 128,
+   "content_end": 7998
+  },
+  "lexis": {
+   "content_start": 128,
+   "content_end": 7998
+  },
+  "hybrid": {
+   "content_start": 2365,
+   "content_end": 7998
+  }
+ },
+ "84455": {
+  "sentinel": {
+   "content_start": 777,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 428,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 1067,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 777,
+   "content_end": 8000
+  }
+ },
+ "86760": {
+  "sentinel": {
+   "content_start": 3051,
+   "content_end": 1744
+  },
+  "prosefall": {
+   "content_start": 171,
+   "content_end": 7239
+  },
+  "lexis": {
+   "content_start": 171,
+   "content_end": 7239
+  },
+  "hybrid": {
+   "content_start": 3051,
+   "content_end": 1744
+  }
+ },
+ "89781": {
+  "sentinel": {
+   "content_start": 2344,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 2344,
+   "content_end": 7426
+  },
+  "lexis": {
+   "content_start": 2344,
+   "content_end": 7175
+  },
+  "hybrid": {
+   "content_start": 2344,
+   "content_end": 7426
+  }
+ },
+ "97175": {
+  "sentinel": {
+   "content_start": 1047,
+   "content_end": 6703
+  },
+  "prosefall": {
+   "content_start": 1033,
+   "content_end": 6703
+  },
+  "lexis": {
+   "content_start": 1033,
+   "content_end": 6703
+  },
+  "hybrid": {
+   "content_start": 1047,
+   "content_end": 6703
+  }
+ },
+ "100150": {
+  "sentinel": {
+   "content_start": 815,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 815,
+   "content_end": 7883
+  },
+  "lexis": {
+   "content_start": 12000,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 815,
+   "content_end": 7883
+  }
+ },
+ "100815": {
+  "sentinel": {
+   "content_start": 2104,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 2104,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 2104,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 2104,
+   "content_end": 8000
+  }
+ },
+ "102192": {
+  "sentinel": {
+   "content_start": 1065,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 1065,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 1065,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 1065,
+   "content_end": 8000
+  }
+ },
+ "105525": {
+  "sentinel": {
+   "content_start": 0,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 2,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 2,
+   "content_end": 3506
+  },
+  "hybrid": {
+   "content_start": 2,
+   "content_end": 8000
+  }
+ },
+ "106014": {
+  "sentinel": {
+   "content_start": 10303,
+   "content_end": 5555
+  },
+  "prosefall": {
+   "content_start": 218,
+   "content_end": 6434
+  },
+  "lexis": {
+   "content_start": 218,
+   "content_end": 5956
+  },
+  "hybrid": {
+   "content_start": 10303,
+   "content_end": 5555
+  }
+ },
+ "112405": {
+  "sentinel": {
+   "content_start": 1199,
+   "content_end": 1109
+  },
+  "prosefall": {
+   "content_start": 743,
+   "content_end": 7998
+  },
+  "lexis": {
+   "content_start": 743,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 1199,
+   "content_end": 1109
+  }
+ },
+ "118113": {
+  "sentinel": {
+   "content_start": 2310,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 910,
+   "content_end": 7225
+  },
+  "lexis": {
+   "content_start": 910,
+   "content_end": 7225
+  },
+  "hybrid": {
+   "content_start": 2310,
+   "content_end": 7225
+  }
+ },
+ "118922": {
+  "sentinel": {
+   "content_start": 3533,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 882,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 882,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 3533,
+   "content_end": 8000
+  }
+ },
+ "119499": {
+  "sentinel": {
+   "content_start": 2161,
+   "content_end": 6314
+  },
+  "prosefall": {
+   "content_start": 688,
+   "content_end": 6865
+  },
+  "lexis": {
+   "content_start": 469,
+   "content_end": 6865
+  },
+  "hybrid": {
+   "content_start": 2161,
+   "content_end": 6314
+  }
+ },
+ "122177": {
+  "sentinel": {
+   "content_start": 3787,
+   "content_end": 7141
+  },
+  "prosefall": {
+   "content_start": 523,
+   "content_end": 7141
+  },
+  "lexis": {
+   "content_start": 2528,
+   "content_end": 7141
+  },
+  "hybrid": {
+   "content_start": 3787,
+   "content_end": 7141
+  }
+ },
+ "127744": {
+  "sentinel": {
+   "content_start": 867,
+   "content_end": 6930
+  },
+  "prosefall": {
+   "content_start": 2,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 2,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 867,
+   "content_end": 6930
+  }
+ },
+ "129938": {
+  "sentinel": {
+   "content_start": 2310,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 2310,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 2310,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 2310,
+   "content_end": 8000
+  }
+ },
+ "131743": {
+  "sentinel": {
+   "content_start": 546,
+   "content_end": 6835
+  },
+  "prosefall": {
+   "content_start": 294,
+   "content_end": 7971
+  },
+  "lexis": {
+   "content_start": 294,
+   "content_end": 7971
+  },
+  "hybrid": {
+   "content_start": 546,
+   "content_end": 6835
+  }
+ },
+ "133442": {
+  "sentinel": {
+   "content_start": 1593,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 170,
+   "content_end": 5572
+  },
+  "lexis": {
+   "content_start": 170,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 1593,
+   "content_end": 5572
+  }
+ },
+ "140230": {
+  "sentinel": {
+   "content_start": 1479,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 151,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 151,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 1479,
+   "content_end": 8000
+  }
+ },
+ "146756": {
+  "sentinel": {
+   "content_start": 1971,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 1971,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 1971,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 1971,
+   "content_end": 8000
+  }
+ },
+ "148509": {
+  "sentinel": {
+   "content_start": 20,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 20,
+   "content_end": 7925
+  },
+  "lexis": {
+   "content_start": 20,
+   "content_end": 7925
+  },
+  "hybrid": {
+   "content_start": 20,
+   "content_end": 7925
+  }
+ },
+ "148534": {
+  "sentinel": {
+   "content_start": 2099,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 2099,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 2099,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 2099,
+   "content_end": 8000
+  }
+ },
+ "148575": {
+  "sentinel": {
+   "content_start": 1614,
+   "content_end": 3552
+  },
+  "prosefall": {
+   "content_start": 1602,
+   "content_end": 7727
+  },
+  "lexis": {
+   "content_start": 1602,
+   "content_end": 7727
+  },
+  "hybrid": {
+   "content_start": 1614,
+   "content_end": 3552
+  }
+ },
+ "149779": {
+  "sentinel": {
+   "content_start": 1366,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 517,
+   "content_end": 7327
+  },
+  "lexis": {
+   "content_start": 517,
+   "content_end": 7327
+  },
+  "hybrid": {
+   "content_start": 1366,
+   "content_end": 7327
+  }
+ },
+ "157872": {
+  "sentinel": {
+   "content_start": 661,
+   "content_end": 5473
+  },
+  "prosefall": {
+   "content_start": 647,
+   "content_end": 6987
+  },
+  "lexis": {
+   "content_start": 647,
+   "content_end": 6987
+  },
+  "hybrid": {
+   "content_start": 661,
+   "content_end": 5473
+  }
+ },
+ "162196": {
+  "sentinel": {
+   "content_start": 2090,
+   "content_end": 6254
+  },
+  "prosefall": {
+   "content_start": 187,
+   "content_end": 7697
+  },
+  "lexis": {
+   "content_start": 187,
+   "content_end": 7697
+  },
+  "hybrid": {
+   "content_start": 2090,
+   "content_end": 6254
+  }
+ },
+ "163527": {
+  "sentinel": {
+   "content_start": 1044,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 1027,
+   "content_end": 7998
+  },
+  "lexis": {
+   "content_start": 1027,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 1044,
+   "content_end": 7998
+  }
+ },
+ "170240": {
+  "sentinel": {
+   "content_start": 21,
+   "content_end": 0
+  },
+  "prosefall": {
+   "content_start": 0,
+   "content_end": 5665
+  },
+  "lexis": {
+   "content_start": 0,
+   "content_end": 5092
+  },
+  "hybrid": {
+   "content_start": 21,
+   "content_end": 0
+  }
+ },
+ "173436": {
+  "sentinel": {
+   "content_start": 1425,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 264,
+   "content_end": 6948
+  },
+  "lexis": {
+   "content_start": 108,
+   "content_end": 4446
+  },
+  "hybrid": {
+   "content_start": 1425,
+   "content_end": 6948
+  }
+ },
+ "175805": {
+  "sentinel": {
+   "content_start": 1504,
+   "content_end": 5381
+  },
+  "prosefall": {
+   "content_start": 199,
+   "content_end": 6271
+  },
+  "lexis": {
+   "content_start": 199,
+   "content_end": 5381
+  },
+  "hybrid": {
+   "content_start": 1504,
+   "content_end": 5381
+  }
+ },
+ "175859": {
+  "sentinel": {
+   "content_start": 584,
+   "content_end": 4598
+  },
+  "prosefall": {
+   "content_start": 540,
+   "content_end": 4598
+  },
+  "lexis": {
+   "content_start": 540,
+   "content_end": 4598
+  },
+  "hybrid": {
+   "content_start": 584,
+   "content_end": 4598
+  }
+ },
+ "176042": {
+  "sentinel": {
+   "content_start": 10107,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 7866,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 7866,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 10107,
+   "content_end": 8000
+  }
+ },
+ "176326": {
+  "sentinel": {
+   "content_start": 26,
+   "content_end": 7279
+  },
+  "prosefall": {
+   "content_start": 0,
+   "content_end": 7279
+  },
+  "lexis": {
+   "content_start": 0,
+   "content_end": 7279
+  },
+  "hybrid": {
+   "content_start": 26,
+   "content_end": 7279
+  }
+ },
+ "180733": {
+  "sentinel": {
+   "content_start": 961,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 961,
+   "content_end": 5417
+  },
+  "lexis": {
+   "content_start": 961,
+   "content_end": 5417
+  },
+  "hybrid": {
+   "content_start": 961,
+   "content_end": 5417
+  }
+ },
+ "183741": {
+  "sentinel": {
+   "content_start": 2705,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 243,
+   "content_end": 7107
+  },
+  "lexis": {
+   "content_start": 243,
+   "content_end": 7107
+  },
+  "hybrid": {
+   "content_start": 2705,
+   "content_end": 7107
+  }
+ },
+ "184046": {
+  "sentinel": {
+   "content_start": 5974,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 42,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 42,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 5974,
+   "content_end": 8000
+  }
+ },
+ "184098": {
+  "sentinel": {
+   "content_start": 2523,
+   "content_end": 0
+  },
+  "prosefall": {
+   "content_start": 2523,
+   "content_end": 7998
+  },
+  "lexis": {
+   "content_start": 2523,
+   "content_end": 4234
+  },
+  "hybrid": {
+   "content_start": 2523,
+   "content_end": 0
+  }
+ },
+ "186189": {
+  "sentinel": {
+   "content_start": 629,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 629,
+   "content_end": 8000
+  },
+  "lexis": {
+   "content_start": 629,
+   "content_end": 8000
+  },
+  "hybrid": {
+   "content_start": 629,
+   "content_end": 8000
+  }
+ },
+ "186824": {
+  "sentinel": {
+   "content_start": 152,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 152,
+   "content_end": 7291
+  },
+  "lexis": {
+   "content_start": 289,
+   "content_end": 7291
+  },
+  "hybrid": {
+   "content_start": 152,
+   "content_end": 7291
+  }
+ },
+ "190827": {
+  "sentinel": {
+   "content_start": 1111,
+   "content_end": 8000
+  },
+  "prosefall": {
+   "content_start": 227,
+   "content_end": 7007
+  },
+  "lexis": {
+   "content_start": 227,
+   "content_end": 7007
+  },
+  "hybrid": {
+   "content_start": 1111,
+   "content_end": 7007
+  }
+ },
+ "193026": {
+  "sentinel": {
+   "content_start": 34,
+   "content_end": 4981
+  },
+  "prosefall": {
+   "content_start": 34,
+   "content_end": 5378
+  },
+  "lexis": {
+   "content_start": 34,
+   "content_end": 5378
+  },
+  "hybrid": {
+   "content_start": 34,
+   "content_end": 4981
+  }
+ },
+ "196454": {
+  "sentinel": {
+   "content_start": 866,
+   "content_end": 1743
+  },
+  "prosefall": {
+   "content_start": 866,
+   "content_end": 5833
+  },
+  "lexis": {
+   "content_start": 866,
+   "content_end": 5833
+  },
+  "hybrid": {
+   "content_start": 866,
+   "content_end": 1743
+  }
+ },
+ "198740": {
+  "sentinel": {
+   "content_start": 1935,
+   "content_end": 0
+  },
+  "prosefall": {
+   "content_start": 1935,
+   "content_end": 7517
+  },
+  "lexis": {
+   "content_start": 2938,
+   "content_end": 7204
+  },
+  "hybrid": {
+   "content_start": 1935,
+   "content_end": 0
+  }
+ },
+ "202161": {
+  "sentinel": {
+   "content_start": 1238,
+   "content_end": 0
+  },
+  "prosefall": {
+   "content_start": 1189,
+   "content_end": 7919
+  },
+  "lexis": {
+   "content_start": 1189,
+   "content_end": 6327
+  },
+  "hybrid": {
+   "content_start": 1238,
+   "content_end": 0
+  }
+ }
+}

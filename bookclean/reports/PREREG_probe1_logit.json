@@ -1,0 +1,34 @@
+{
+ "method": "logit-space (log-odds) linear-in-ln(params) extrapolation from 2 toy points",
+ "rationale": "overlap is bounded at 1.0; arm A already 0.722 at 500M -> naive power law overshoots through the ceiling (Rook methods rider)",
+ "toy_points": {
+  "dirty": [
+   [
+    132000000.0,
+    0.6161
+   ],
+   [
+    500000000.0,
+    0.7222
+   ]
+  ],
+  "clean": [
+   [
+    132000000.0,
+    0.5123
+   ],
+   [
+    500000000.0,
+    0.5979
+   ]
+  ]
+ },
+ "target_params": 4600000000.0,
+ "PREREGISTERED_prediction_dirty_overlap_at_4.6B": 0.8531,
+ "derived_clean_overlap_at_4.6B": 0.7263,
+ "derived_gap_at_4.6B": 0.1268,
+ "naive_raw_powerlaw_for_contrast": {
+  "dirty": 0.9411
+ },
+ "registered_before_probing": true
+}

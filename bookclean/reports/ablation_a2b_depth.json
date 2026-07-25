@@ -1,0 +1,50 @@
+{
+ "plain-2": {
+  "params": 40897,
+  "val_acc": 0.9154,
+  "best_auc": 0.9778,
+  "sec": 4.1
+ },
+ "plain-4": {
+  "params": 115009,
+  "val_acc": 0.9239,
+  "best_auc": 0.9807,
+  "sec": 5.4
+ },
+ "plain-6": {
+  "params": 189121,
+  "val_acc": 0.9237,
+  "best_auc": 0.9808,
+  "sec": 6.7
+ },
+ "plain-8": {
+  "params": 263233,
+  "val_acc": 0.9254,
+  "best_auc": 0.9814,
+  "sec": 7.4
+ },
+ "plain-12": {
+  "params": 411457,
+  "val_acc": 0.9213,
+  "best_auc": 0.9808,
+  "sec": 10.2
+ },
+ "res-8": {
+  "params": 600193,
+  "val_acc": 0.9305,
+  "best_auc": 0.9829,
+  "sec": 16.8
+ },
+ "res-16": {
+  "params": 1196161,
+  "val_acc": 0.9296,
+  "best_auc": 0.9826,
+  "sec": 32.9
+ },
+ "res-24": {
+  "params": 1792129,
+  "val_acc": 0.9284,
+  "best_auc": 0.9827,
+  "sec": 49.0
+ }
+}

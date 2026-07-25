@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------------------
+# Large derived artifacts. All of these are REGENERABLE by re-running the
+# pipeline -- but note that regeneration is only trustworthy once the pipeline
+# reproduces the shipped corpora bit-for-bit (see reports/PROJECT_STATE.md).
+# Keep the source jsonl on disk until then.
+# ---------------------------------------------------------------------------
+
+# Trained classifiers, frequency tables, packed token arrays
+reports/*.pt
+reports/*.pkl
+reports/*.npz
+
+# Per-pass removal ledgers (35-56 MB each; rebuilt by run_v*.py)
+reports/*_ledger.jsonl
+
+# Bulk corpus dumps, indices, and mined span sets
+reports/originals/
+reports/book_index_*.tsv
+reports/para_*.json
+reports/junk_class.json
+reports/junk_lexicon.jsonl
+reports/junk_lexicon_sub.jsonl
+reports/silver_books3_heads.jsonl
+reports/magnet_subset.jsonl
+
+# Raw per-span eval output (~4.3 MB x 12). The summaries that matter are in
+# reports/ABLATION_RESULTS.md and the small *_result.json files, both tracked.
+reports/eval_*.json

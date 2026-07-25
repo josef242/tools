@@ -1,0 +1,27 @@
+{
+ "de-redaction (v1)": [
+  0,
+  0,
+  0
+ ],
+ "structural boundary (v9)": [
+  685,
+  681,
+  114335
+ ],
+ "cross-book dedup (v10)": [
+  608,
+  0,
+  15531
+ ],
+ "within-book dedup (v11)": [
+  159,
+  0,
+  10029
+ ],
+ "multi-span cutter (REJECTED)": [
+  2776,
+  429,
+  123392
+ ]
+}

@@ -1,0 +1,19 @@
+{
+ "ckpt": "/tmp/claude-1000/-home-josef-valhalla-code-tools/cb79b2c8-338c-4b45-9621-dea212f39664/scratchpad/ckpt_v11-s42-e3/model_step_028799.pt",
+ "n": 550,
+ "cont_nll_per_tok": 1.6679089572774566,
+ "greedy_verbatim_overlap": 0.6334489197058784,
+ "verbatim_frac_over_0.8": 0.21454545454545454,
+ "by_class": {
+  "cross-book": {
+   "n": 367,
+   "cont_nll": 2.0904609418443325,
+   "overlap": 0.5585844548427804
+  },
+  "within-book": {
+   "n": 183,
+   "cont_nll": 0.8204959609056339,
+   "overlap": 0.7835869448684847
+  }
+ }
+}

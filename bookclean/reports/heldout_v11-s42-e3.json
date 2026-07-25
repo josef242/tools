@@ -1,0 +1,5 @@
+{
+ "ckpt": "/tmp/claude-1000/-home-josef-valhalla-code-tools/cb79b2c8-338c-4b45-9621-dea212f39664/scratchpad/heldout_ckpts/B_028799.pt",
+ "n": 6000,
+ "heldout_nll_per_tok": 3.8156035119399117
+}

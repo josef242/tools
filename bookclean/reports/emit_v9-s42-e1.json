@@ -1,0 +1,19 @@
+{
+ "ckpt": "/home/josef/data/abl_ckpts/v9-s42-e1/",
+ "n": 550,
+ "cont_nll_per_tok": 1.4160629634507929,
+ "greedy_verbatim_overlap": 0.6689670563598177,
+ "verbatim_frac_over_0.8": 0.2545454545454545,
+ "by_class": {
+  "cross-book": {
+   "n": 367,
+   "cont_nll": 1.6956686020477374,
+   "overlap": 0.6160882566964649
+  },
+  "within-book": {
+   "n": 183,
+   "cont_nll": 0.8553237865924399,
+   "overlap": 0.7750136108759403
+  }
+ }
+}

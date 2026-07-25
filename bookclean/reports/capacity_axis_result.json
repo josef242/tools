@@ -1,0 +1,59 @@
+{
+ "experiment": "capacity axis (132M -> 500M, 4.07x), 1 epoch, 30k subset",
+ "cross_book_gap": {
+  "1": {
+   "m132": 0.2055,
+   "m500": 0.2064
+  },
+  "2-4": {
+   "m132": 0.3248,
+   "m500": 0.3457
+  },
+  "5-20": {
+   "m132": 0.5352,
+   "m500": 0.5989
+  },
+  "21-100": {
+   "m132": 0.7933,
+   "m500": 0.9085
+  },
+  "100+": {
+   "m132": 1.014,
+   "m500": 0.9253
+  }
+ },
+ "within_book_gap": {
+  "m132": 0.1197,
+  "m500": 0.1741
+ },
+ "content_control_gap": {
+  "m132": -0.0002,
+  "m500": 0.012
+ },
+ "action_trigger_2_4": "DOES NOT FIRE (+0.021 nats, 1.06x, at/below noise floor +/-0.018)",
+ "frontier_hypothesis": "NOT SUPPORTED at 4x: low-dup buckets flat (1.00x/1.06x); growth is mid-bucket (1.12-1.15x); top bucket saturates (0.91x)",
+ "verdict": "capacity effect real but MODEST (max +0.115 nats); junk harm does not explode with scale",
+ "caveats": "single seed; 4x not 35x; 1 epoch; extrapolation to 4.6B still ~9x beyond",
+ "mode_probe": {
+  "metric": "greedy verbatim-overlap gap (armA-armB), cross-book, 1ep, identical 550-probe set",
+  "gap_132M": 0.1038,
+  "gap_500M": 0.1243,
+  "emission_gap_ratio": 1.197,
+  "nll_gap_ratio": 1.009,
+  "cont_nll_gap_ratio": 0.993,
+  "within_book_verbatim_gap": {
+   "m132": 0.0138,
+   "m500": 0.0187
+  },
+  "rook_prediction": "CONFIRMED \u2014 emission-gap ratio (1.197x) EXCEEDS NLL-gap ratio (1.009x)",
+  "interpretation": "mean is inert with capacity; MODE grows ~20% per 4x. Same signature as reps axis (NLL frozen, verbatim crept). The mean is blind to what the mode does."
+ },
+ "extrapolation_4p6B": {
+  "alpha_power_law": 0.1281,
+  "param_ratio_132M_to_4.6B": 34.8,
+  "gap_multiplier": 1.576,
+  "projected_verbatim_gap": 0.1636,
+  "caveat": "2-point extrapolation from ONE scale step, single seed, 1 epoch. Direction measured, magnitude rough."
+ },
+ "final_verdict": "Average-loss harm does NOT scale (reps flat, capacity flat). REGURGITATION harm DOES scale modestly (+20%/4x, ~+57% projected over 35x). Corpus quality safe; verbatim boilerplate emission is the axis to watch."
+}

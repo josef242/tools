@@ -1,0 +1,53 @@
+{
+ "probe": "PROBE 1 + 3 (wizard101 production, 4.6B)",
+ "registered_prediction": 0.8531,
+ "naive_raw_powerlaw": 0.9411,
+ "measured": {
+  "peak_dirty_step_10750": 0.5286,
+  "post_switch_step_13250": 0.5539
+ },
+ "toy_dirty": {
+  "132M": 0.6161,
+  "500M": 0.7222
+ },
+ "toy_clean": {
+  "132M": 0.5123,
+  "500M": 0.5979
+ },
+ "VERDICT_probe1": "PREDICTION FALSIFIED out-of-sample. Production sits BELOW both toys; trend reverses, not merely flattens.",
+ "KEY_READING": "wizard101 dirty-trained (0.529) falls INSIDE the toy CLEAN-arm band (0.512-0.598) -> at production scale+mixture there is no measurable memorization premium over pattern competence.",
+ "VERDICT_probe3_forgetting": "NO DECAY across 2500 post-switch steps (0.5286 -> 0.5539, slight RISE). Forgetting hypothesis rejected; drift is general competence improving.",
+ "why_extrapolation_failed": "validated on ABSOLUTE books-token count (1.28x) which is the wrong invariant. Exposure-per-param: toys 19.0/5.0 vs wizard101 0.70 tok/param; diet concentration 100% vs 28% books.",
+ "within_book_overlap": {
+  "132M": 0.775,
+  "500M": 0.793,
+  "wizard101_10750": 0.7174,
+  "wizard101_13250": 0.8022
+ },
+ "caveats": [
+  "no clean 4.6B twin -> cannot compute a production GAP, only absolute levels",
+  "cross-scale/architecture comparison is loose (101L x 2048 deep-narrow, MTP, T=4096)",
+  "wizard101 only 6.6% through its schedule (13,250/200,000), LR still high",
+  "single model, no seeds"
+ ],
+ "probe2_dup_buckets_at_10750": {
+  "cross_2_4": {
+   "n": 371,
+   "overlap": 0.551,
+   "cont_nll": 2.1381
+  },
+  "cross_100plus_control": {
+   "n": 181,
+   "overlap": 0.4944,
+   "cont_nll": 2.2204
+  },
+  "toy_reference_per_bucket_NLL_132M_armA": {
+   "2-4": 2.9246,
+   "100+": 1.9326
+  },
+  "VERDICT": "Dup-monotonic memorization signature ABSENT at production scale (spread 1.0 nats at toy -> 0.08 nats INVERTED at 4.6B).",
+  "asymmetry_resolved": "The 100+ control is a class wizard101 CERTAINLY saw (P~1.0, ~11 corpus occurrences) and it ALSO shows no signature (0.494, at/below toy clean band 0.512-0.598). So the 2-4 null is NOT explained by never-encountered.",
+  "action_trigger": "2-4 ACQUITTAL HOLDS at 35x -> dup>=3 policy verified at the only scale that matters."
+ },
+ "campaign_final": "All three probes done. Toy extrapolation FALSIFIED out-of-sample; no forgetting; no dup-structure at production; production dirty model sits inside the toy CLEAN band. Junk harm at production scale is not measurably present in the mode statistic."
+}

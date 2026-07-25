@@ -1,0 +1,20 @@
+{
+ "ckpt": "/home/josef/brainbox/checkpoints/current/wizard101/model_step_010750.pt",
+ "step": null,
+ "n": 552,
+ "cont_nll_per_tok": 2.165083468087252,
+ "greedy_verbatim_overlap": 0.5324101416445709,
+ "verbatim_frac_over_0.8": 0.050724637681159424,
+ "by_class": {
+  "cross-2-4": {
+   "n": 371,
+   "cont_nll": 2.138087448513034,
+   "overlap": 0.5509553755630853
+  },
+  "cross-100plus": {
+   "n": 181,
+   "cont_nll": 2.220417850750429,
+   "overlap": 0.4943975351044116
+  }
+ }
+}

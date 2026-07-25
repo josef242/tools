@@ -1,0 +1,106 @@
+{
+ "task": "single-cut boundary labels for books3 front/back matter",
+ "policy": {
+  "model": "one head cut (content_start) + one tail cut (content_end) per book; cleaner removes [0,start) and [end,len)",
+  "hard_junk": "publisher blocks, legal, ISBN/CIP, TOCs, print-run lines, credits, addresses, promos, conversion artifacts (v5.3.2/prh)",
+  "gray_keep": "acknowledgments, prefaces, author intros, epigraphs - real prose, KEEP when they fall after the junk cut (usual case)",
+  "gray_sacrifice": "dedications/epigraphs interleaved BEFORE the junk boundary die with the cut - formulaic, tiny, acceptable loss",
+  "sacred": "never cut into narrative/expository content; catastrophic = >200 content chars removed"
+ },
+ "head_labels": [
+  {
+   "line": 27838,
+   "content_start": 1330,
+   "starts_with": "# ACKNOWLEDGMENTS",
+   "note": "series page+title+legal+CIP+print-run; acks kept (real prose)"
+  },
+  {
+   "line": 30470,
+   "content_start": 1783,
+   "starts_with": "INTRODUCTION | Why Bother",
+   "note": "also-by+(c)+CIP+design credits+v5.3.2/prh artifacts+dedication+epigraph+TOC all cut; CORRECTED from 1560 (was pointing at TOC line)"
+  },
+  {
+   "line": 36760,
+   "content_start": 400,
+   "starts_with": "**THIS MORNING** they were here",
+   "note": "md title block + chapter TOC cut"
+  },
+  {
+   "line": 38372,
+   "content_start": 975,
+   "starts_with": "# Introduction / Steaming is a fantastically",
+   "note": "# Copyright block + UK legal + address; author intro kept"
+  },
+  {
+   "line": 48319,
+   "content_start": ">=5000",
+   "starts_with": "beyond window",
+   "note": "For-Dummies quoted TOC exceeds 5KB window; needs extended window"
+  },
+  {
+   "line": 48770,
+   "content_start": 940,
+   "starts_with": "# Chapter One",
+   "note": "title+dedication+TOC cut; dedication sacrificed (240 formulaic chars)"
+  },
+  {
+   "line": 186189,
+   "content_start": 629,
+   "starts_with": "The authors are grateful",
+   "note": "kanji reference book; acks=gray-keep boundary; LIST-CONTENT class"
+  },
+  {
+   "line": 176042,
+   "content_start": 11452,
+   "starts_with": "2 There's nothing like lowering",
+   "note": "travel guide, approx label; LIST-CONTENT class, interleaved photo credits"
+  },
+  {
+   "line": 106014,
+   "content_start": 10283,
+   "starts_with": "# Introduction / Welcome to Investing",
+   "note": "For-Dummies numbered TOC dump"
+  },
+  {
+   "line": 100815,
+   "content_start": 3750,
+   "starts_with": "**Introduction** / Learning to develop software",
+   "note": "CORRECTED from 9188: real Introduction at 3750 verified with post-boundary prose; For-Dummies franchise = extreme front matter"
+  },
+  {
+   "line": 122177,
+   "content_start": 5170,
+   "starts_with": "# Chapter 1",
+   "note": "praise quotes + playlist TOC + epigraphs sacrificed per policy"
+  },
+  {
+   "line": 61732,
+   "content_start": 3430,
+   "starts_with": "Introduction / by David Kukoff",
+   "note": "xhtml-anchor markdown TOC artifacts"
+  }
+ ],
+ "tail_labels": [
+  {
+   "line": 112405,
+   "content_end": 0,
+   "note": "whole 8KB window is biblio+films+credits+TOC back matter"
+  },
+  {
+   "line": 105525,
+   "content_end": 8000,
+   "note": "travel guide hotel listings ARE content; URLs throughout; nothing to cut in window"
+  },
+  {
+   "line": 184098,
+   "content_end": 0,
+   "note": "trailing-eCopyright book: whole window is legal+CIP+ISBN+TOC"
+  },
+  {
+   "line": 202161,
+   "content_end": 0,
+   "note": "CORRECTED: window start verified as endnote citations - entire window is back matter (notes+bio+copyright)"
+  }
+ ]
+}

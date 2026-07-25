@@ -1,0 +1,649 @@
+{
+  "file": "/home/josef/data/book.jsonl",
+  "bytes_scanned": 8000239830,
+  "books_scanned": 19729,
+  "elapsed_sec": 213.0,
+  "head_has_pg_frac": 0.1103,
+  "tail_has_pg_frac": 0.8406,
+  "markers": {
+    "pg_start_banner": {
+      "occurrences": 2,
+      "books_with": 2,
+      "books_with_frac": 0.0001,
+      "mean_first_pos": 0.0018,
+      "examples": [
+        {
+          "title": "Rollo at Work by Jacob Abbott",
+          "book_index": 3522,
+          "pos_frac": 0.0028,
+          "snippet": "\n\nAuthor: Jacob Abbott\n\nRelease Date: May 1, 2008 [Ebook #25274]\n\nLanguage: English\n\nCharacter set encoding: US-ASCII\n\n\n***START OF THE PROJECT GUTENBERG EBOOK ROLLO AT WORK***\n\n\n\n\n\nTranscriber's Notes:\n\nThe original print starts with a lis"
+        },
+        {
+          "title": "The Terms of Surrender by Louis Tracy",
+          "book_index": 14474,
+          "pos_frac": 0.0008,
+          "snippet": "\n\nAuthor: Louis Tracy\n\nRelease Date: January 17, 2013 [EBook #41859]\n\nLanguage: English\n\nCharacter set encoding: ASCII\n\n*** START OF THIS PROJECT GUTENBERG EBOOK THE TERMS OF SURRENDER ***\n\n\n\n\nProduced by D Alexander and the Online Distribu"
+        }
+      ]
+    },
+    "pg_end_banner": {
+      "occurrences": 1,
+      "books_with": 1,
+      "books_with_frac": 0.0001,
+      "mean_first_pos": 0.0031,
+      "examples": [
+        {
+          "title": "The Whole Armour of God by John Henry Jowett",
+          "book_index": 10684,
+          "pos_frac": 0.0031,
+          "snippet": "ay, the meaning of the paragraph is evident from the\n    context.\n\n    Bold text is marked with =, italics with _.\n\n    *** End of the transcription notes\n\n\n\n\nTHE WHOLE ARMOUR OF GOD\n\n\n\n\nBy J. H. JOWETT, D.D.\n\n\n    The Whole Armour of God\n\n"
+        }
+      ]
+    },
+    "pg_end_text": {
+      "occurrences": 16559,
+      "books_with": 16551,
+      "books_with_frac": 0.8389,
+      "mean_first_pos": 0.9991,
+      "examples": [
+        {
+          "title": "The Bible Both Testaments King James Version",
+          "book_index": 0,
+          "pos_frac": 1.0,
+          "snippet": "quickly.\nAmen.\n\nEven so, come, Lord Jesus.\n\n22:21 The grace of our Lord Jesus Christ be with you all. Amen.\n\n\n\n\n\n\n\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The King James Bible\n\n*** "
+        },
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 1.0,
+          "snippet": "PROHIBITED COMMERCIAL DISTRIBUTION INCLUDES BY ANY\nSERVICE THAT CHARGES FOR DOWNLOAD TIME OR FOR MEMBERSHIP.>>\n\n\n\n\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The Complete Works of William\nShakespeare, by William Shakespeare\n\n*** "
+        },
+        {
+          "title": "The House on the Borderland by William Hope Hodgson",
+          "book_index": 2,
+          "pos_frac": 0.9997,
+          "snippet": "e of ink, which suggests that the pen has trailed away\nover the paper; possibly, through fright and weakness.--Ed.\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The House on the Borderland\nby William Hope Hodgson\n\n*** "
+        }
+      ]
+    },
+    "pg_mention": {
+      "occurrences": 32168,
+      "books_with": 18111,
+      "books_with_frac": 0.918,
+      "mean_first_pos": 0.8786,
+      "examples": [
+        {
+          "title": "The Bible Both Testaments King James Version",
+          "book_index": 0,
+          "pos_frac": 1.0,
+          "snippet": "en.\n\nEven so, come, Lord Jesus.\n\n22:21 The grace of our Lord Jesus Christ be with you all. Amen.\n\n\n\n\n\n\n\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The King James Bible\n\n*** "
+        },
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\n\nProduced by World Library, Inc., from their Library of the Future\n\n\n\n\nThis is the 100th Etext file presented by Project Gutenberg, and\nis presented in cooperation with World Library, Inc., from their\nLibrary of the Future and Shakes"
+        },
+        {
+          "title": "The House on the Borderland by William Hope Hodgson",
+          "book_index": 2,
+          "pos_frac": 0.9997,
+          "snippet": "hich suggests that the pen has trailed away\nover the paper; possibly, through fright and weakness.--Ed.\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The House on the Borderland\nby William Hope Hodgson\n\n*** "
+        }
+      ]
+    },
+    "pg_url": {
+      "occurrences": 3158,
+      "books_with": 1527,
+      "books_with_frac": 0.0774,
+      "mean_first_pos": 0.0398,
+      "examples": [
+        {
+          "title": "Beacon Lights of History Volume 5 by John Lord",
+          "book_index": 318,
+          "pos_frac": 0.0007,
+          "snippet": "on Lights of History, Volume III,\n                part 1: The Middle Ages.  See E-Book#1498,\n                http://www.gutenberg.net/etext98/31blh10.txt or\n                http://www.gutenberg.net/etext98/31blh10.zip\n                The nu"
+        },
+        {
+          "title": "Beacon Lights of History Volume 6 by John Lord",
+          "book_index": 319,
+          "pos_frac": 0.0006,
+          "snippet": " History, Volume III,\n                part 2: Renaissance and Reformation.  See E-Book#1499,\n                http://www.gutenberg.net/etext98/32blh10.txt or\n                http://www.gutenberg.net/etext98/32blh10.zip\n                The nu"
+        },
+        {
+          "title": "The History of Rome Vol. 1 by Theodor Mommsen",
+          "book_index": 447,
+          "pos_frac": 0.0003,
+          "snippet": "l five volumes of this work is also available\n      individually in the Project Gutenberg library.\n      See http://www.gutenberg.org/etext/10706\n\n      The original German version of this work, Roemische Geschichte,\n      Erstes Buch: bis "
+        }
+      ]
+    },
+    "small_print": {
+      "occurrences": 4263,
+      "books_with": 667,
+      "books_with_frac": 0.0338,
+      "mean_first_pos": 0.1714,
+      "examples": [
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.0003,
+          "snippet": "CESS TO THIS MATERIAL.  YOU ARE ENCOURAGED!!\nTO GIVE IT AWAY TO ANYONE YOU LIKE, BUT NO CHARGES ARE ALLOWED!!\n\n\n\n\n***** SMALL PRINT! for COMPLETE SHAKESPEARE *****\n\nTHIS ELECTRONIC VERSION OF THE COMPLETE WORKS OF WILLIAM\nSHAKESPEARE IS COP"
+        },
+        {
+          "title": "Divine Comedy Purgatory by Dante Alighieri",
+          "book_index": 21,
+          "pos_frac": 0.0177,
+          "snippet": "ET GUT* for newsletters.\n\n**Information prepared by the Project Gutenberg legal advisor**\n(Three Pages)\n\n\n***START**THE SMALL PRINT!**FOR PUBLIC DOMAIN ETEXTS**START***\nWhy is this \"Small Print!\" statement here?  You know: lawyers.\nThey tel"
+        },
+        {
+          "title": "Gaslight Sonatas by Fannie Hurst",
+          "book_index": 26,
+          "pos_frac": 0.5204,
+          "snippet": "stew and two\nglasses of beer. Some days following, her very first venture out into the\nmorning, she found employment--a small printing-shop off Sixth Avenue just\nbelow Twenty-third Street. A mere pocket in the wall, a machine champing in\nit"
+        }
+      ]
+    },
+    "license_block": {
+      "occurrences": 48,
+      "books_with": 48,
+      "books_with_frac": 0.0024,
+      "mean_first_pos": 0.5465,
+      "examples": [
+        {
+          "title": "The Oregon Trail by Francis Parkman Jr.",
+          "book_index": 125,
+          "pos_frac": 0.6469,
+          "snippet": "ike or lay hands upon the meanest of their people, the \"soldiers\"\nin the discharge of their appropriate functions, have full license to\nmake use of these and similar acts of coercion.\n\n\n\nCHAPTER XVII\n\nTHE BLACK HILLS\n\n\nWe traveled eastward "
+        },
+        {
+          "title": "Selection from the Discourses of Epictetus With the Encheiridion",
+          "book_index": 419,
+          "pos_frac": 0.6549,
+          "snippet": ", the more ridiculous he is?\n\nSo in this matter also: if you kiss your own child, or your brother or\nfriend, never give full license to the appearance ([Greek: phantasian]),\nand allow not your pleasure to go as far as it chooses; but check "
+        },
+        {
+          "title": "Old Saint Paul's by William Harrison Ainsworth",
+          "book_index": 749,
+          "pos_frac": 0.0923,
+          "snippet": "ever venture to repeat his\nvisit.\"\n\n\"You know that you speak safely, fellow,\" rejoined Wyvil, \"and you,\ntherefore, give full license to your scurrile tongue. But a time will\ncome when I will chastise your insolence.\"\n\n\"No more of this,\" cri"
+        }
+      ]
+    },
+    "produced_by": {
+      "occurrences": 42393,
+      "books_with": 17703,
+      "books_with_frac": 0.8973,
+      "mean_first_pos": 0.0217,
+      "examples": [
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\n\nProduced by World Library, Inc., from their Library of the Future\n\n\n\n\nThis is the 100th Etext file presented by Project "
+        },
+        {
+          "title": "The House on the Borderland by William Hope Hodgson",
+          "book_index": 2,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\n\nProduced by Suzanne Shell, Sjaani and PG Distributed Proofreaders\n\n\n\n\nTHE HOUSE ON THE BORDERLAND\n\nWilliam Hope Hodgson\n"
+        },
+        {
+          "title": "The Warriors by Anna Robertson Brown Lindsay",
+          "book_index": 4,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\n\nProduced by Charles Aldarondo, Charlie Kirschner\nand the Online Distributed Proofreading Team.\n\n\n\n\nTHE WARRIORS\n\nBY ANNA"
+        }
+      ]
+    },
+    "etext_prepared_by": {
+      "occurrences": 4068,
+      "books_with": 2006,
+      "books_with_frac": 0.1017,
+      "mean_first_pos": 0.001,
+      "examples": [
+        {
+          "title": "Tenterhooks by Ada Leverson",
+          "book_index": 23,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\nE-text prepared by Suzanne Shell, Sarah Lewis, and Project Gutenberg\nDistributed Proofreaders\n\n\n\nTenterhooks\n\n[Book 2 of"
+        },
+        {
+          "title": "The Mirror of Literature Amusement and Instruction",
+          "book_index": 27,
+          "pos_frac": 0.0009,
+          "snippet": "AMUSEMENT, AND INSTRUCTION, VOL. 10, ISSUE 268, AUGUST 11, 1827***\n\n\nE-text prepared by Jonathan Ingram and Project Gutenberg Distributed\nProofreaders\n\n\n\nNote: Project Gutenberg also has an"
+        },
+        {
+          "title": "The Triple Alliance by Harold Avery",
+          "book_index": 28,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\n\nE-text prepared by Lionel G. Sear of Truro, Cornwall, England, and\ndedicated to the memory of R. F. Mudie, who won the b"
+        }
+      ]
+    },
+    "transcriber_note": {
+      "occurrences": 11376,
+      "books_with": 8590,
+      "books_with_frac": 0.4354,
+      "mean_first_pos": 0.5385,
+      "examples": [
+        {
+          "title": "The Iron Game by Henry Francis Keenan",
+          "book_index": 56,
+          "pos_frac": 0.0001,
+          "snippet": "\n\n\n\nProduced by Juliet Sutherland, Virginia Paque\nand PG Distributed Proofreaders\n\n\n\n\n[Transcriber's Note: The spelling inconsistencies of the original have\nbeen retained in this etext.]\n\n\n     The Iron Game"
+        },
+        {
+          "title": "Thaumaturgia by An Oxonian",
+          "book_index": 79,
+          "pos_frac": 0.0005,
+          "snippet": "om images generously\nmade available by the Bibliotheque nationale de France (BnF/Gallica) at\nhttp://gallica.bnf.fr.\n\n\n\n[Transcriber's note: The spelling peculiarities of the original have been\nretained in this etext.]\n\n\n\nTHAUMATURGIA,\n\nOR\n\n"
+        },
+        {
+          "title": "The Twilight of the Gods and Other Tales by Richard Garnett",
+          "book_index": 85,
+          "pos_frac": 0.9995,
+          "snippet": "his tale in entire\nforgetfulness of Hawthorne's \"Rapaccini's Daughter,\" which nevertheless he\nhad certainly read.\n\n\n\n\n\n[Transcriber's note: a misprint in the book was corrected in\nthis edition, from \"He martyrdom\" to \"His martyrdom\".]\n\n\n\n\n\n"
+        }
+      ]
+    },
+    "distributed_proof": {
+      "occurrences": 21237,
+      "books_with": 12882,
+      "books_with_frac": 0.6529,
+      "mean_first_pos": 0.0006,
+      "examples": [
+        {
+          "title": "The House on the Borderland by William Hope Hodgson",
+          "book_index": 2,
+          "pos_frac": 0.0002,
+          "snippet": "\n\n\n\nProduced by Suzanne Shell, Sjaani and PG Distributed Proofreaders\n\n\n\n\nTHE HOUSE ON THE BORDERLAND\n\nWilliam Hope Hodgson\n\n\n_From the Manuscript discovered in 1877"
+        },
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.0006,
+          "snippet": "liotheque nationale de France (BnF/Gallica) at http://gallica.bnf.fr., carlo traverso, Charlie Kirschner and the Online Distributed Proofreading Team.\n\n\n\n\nMY FIRST YEARS AS A\nFRENCHWOMAN\n\n[Illustration: Madame Waddington.\nFrom a photograph "
+        },
+        {
+          "title": "The Warriors by Anna Robertson Brown Lindsay",
+          "book_index": 4,
+          "pos_frac": 0.0002,
+          "snippet": "\n\n\n\nProduced by Charles Aldarondo, Charlie Kirschner\nand the Online Distributed Proofreading Team.\n\n\n\n\nTHE WARRIORS\n\nBY ANNA ROBERTSON BROWN LINDSAY PH.D.\n\nAUTHOR OF\n\nWHAT IS WORTH WHILE?\n"
+        }
+      ]
+    },
+    "internet_archive": {
+      "occurrences": 7261,
+      "books_with": 6506,
+      "books_with_frac": 0.3298,
+      "mean_first_pos": 0.0035,
+      "examples": [
+        {
+          "title": "Kalitan Our Little Alaskan Cousin by Mary F. Nixon-Roulet",
+          "book_index": 148,
+          "pos_frac": 0.0015,
+          "snippet": "stributed Proofreading Team at\nhttp://www.pgdp.net (This file was produced from images\ngenerously made available by The Internet Archive)\n\n\n\n\n\n\n\n[Transcriber's Note: Bold text is surrounded by =equal signs= and italic\ntext is surrounded by "
+        },
+        {
+          "title": "Jesus Says So by Unknown",
+          "book_index": 388,
+          "pos_frac": 0.0011,
+          "snippet": "\n\n\n\nProduced by Internet Archive; University of Florida, Children, David\nGarcia and the Online Distributed Proofreading Team.\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "title": "A Florida Sketch-Book by Bradford Torrey",
+          "book_index": 493,
+          "pos_frac": 0.0003,
+          "snippet": "\n\n\n\nProduced by Sandra Brown and the Online Distributed Proofreading Team\nand the Internet Archive; University of Florida\n\n\n\n\n\n[Transcriber's Note: The original scan for text page 142 is missing\nThis is"
+        }
+      ]
+    },
+    "scanned_by": {
+      "occurrences": 868,
+      "books_with": 837,
+      "books_with_frac": 0.0424,
+      "mean_first_pos": 0.0556,
+      "examples": [
+        {
+          "title": "Hilda Lessways by Arnold Bennett",
+          "book_index": 415,
+          "pos_frac": 0.9741,
+          "snippet": "f it travelling in post office,\nrailway vans, and being sorted, and sealed up in a bag, and recovered\nfrom the bag, and scanned by the postman at Bursley, and borne up\nTrafalgar Road by the postman, and dropped into the letter-box at\nEdwin'"
+        },
+        {
+          "title": "The Anatomy of Melancholy by Democritus Junior",
+          "book_index": 528,
+          "pos_frac": 0.064,
+          "snippet": "bedience to the crown\nof England, until the beginning of his Majesty's happy reign.\" Yet if his\nreasons were thoroughly scanned by a judicious politician, I am afraid he\nwould not altogether be approved, but that it would turn to the dishon"
+        },
+        {
+          "title": "The Atlantic Monthly Vol. 4 No. 21 July 1859 by Various",
+          "book_index": 831,
+          "pos_frac": 0.5886,
+          "snippet": "rt,\nand that she was miserably defeated. Ah, little did she suspect that her\nclouded, dissatisfied face had been keenly scanned by the very eyes she\ndreaded, yet secretly longed to meet,--that her most unconscious sigh\nof disappointment had"
+        }
+      ]
+    },
+    "proofread_mention": {
+      "occurrences": 14451,
+      "books_with": 13726,
+      "books_with_frac": 0.6957,
+      "mean_first_pos": 0.0038,
+      "examples": [
+        {
+          "title": "The House on the Borderland by William Hope Hodgson",
+          "book_index": 2,
+          "pos_frac": 0.0002,
+          "snippet": "\n\n\n\nProduced by Suzanne Shell, Sjaani and PG Distributed Proofreaders\n\n\n\n\nTHE HOUSE ON THE BORDERLAND\n\nWilliam Hope Hodgson\n\n\n_From the Manuscript discovered in 1877 by Messrs. "
+        },
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.0006,
+          "snippet": "tionale de France (BnF/Gallica) at http://gallica.bnf.fr., carlo traverso, Charlie Kirschner and the Online Distributed Proofreading Team.\n\n\n\n\nMY FIRST YEARS AS A\nFRENCHWOMAN\n\n[Illustration: Madame Waddington.\nFrom a photograph taken in the"
+        },
+        {
+          "title": "The Warriors by Anna Robertson Brown Lindsay",
+          "book_index": 4,
+          "pos_frac": 0.0003,
+          "snippet": "\n\n\n\nProduced by Charles Aldarondo, Charlie Kirschner\nand the Online Distributed Proofreading Team.\n\n\n\n\nTHE WARRIORS\n\nBY ANNA ROBERTSON BROWN LINDSAY PH.D.\n\nAUTHOR OF\n\nWHAT IS WORTH WHILE?\nCULTURE AND "
+        }
+      ]
+    },
+    "illustration_tag": {
+      "occurrences": 281388,
+      "books_with": 10220,
+      "books_with_frac": 0.518,
+      "mean_first_pos": 0.0509,
+      "examples": [
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.0007,
+          "snippet": "., carlo traverso, Charlie Kirschner and the Online Distributed Proofreading Team.\n\n\n\n\nMY FIRST YEARS AS A\nFRENCHWOMAN\n\n[Illustration: Madame Waddington.\nFrom a photograph taken in the year of the Exposition, 1878.]\n\nMY FIRST YEARS AS A\nFRE"
+        },
+        {
+          "title": "The Mystery by Stewart Edward White and Samuel Hopkins Adams",
+          "book_index": 8,
+          "pos_frac": 0.0527,
+          "snippet": "is ship.\"\n\n\"Then I've a hunch that your hunch is a wrong one,\" said Ives. \"How long\nwould you guess that craft to be?\"\n\n[Illustration: A schooner comporting herself in a manner uncommon on the\nPacific]\n\nThey were now within a mile of the sc"
+        },
+        {
+          "title": "Wild Northern Scenes by S. H. Hammond",
+          "book_index": 9,
+          "pos_frac": 0.0001,
+          "snippet": "\n\n\n\nProduced by Michael Lockey and PG Distributed Proofreaders\n\n\n\n\n[Illustration: He smashed down upon me again, and made that hole in my\nleg above the knee. I handled my knife in a hurry"
+        }
+      ]
+    },
+    "footnote_tag": {
+      "occurrences": 127741,
+      "books_with": 2236,
+      "books_with_frac": 0.1133,
+      "mean_first_pos": 0.3243,
+      "examples": [
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.0162,
+          "snippet": "ou were and not say awful things\nabout the 'infecte gouvernement' and the Republic, 'which no gentleman\ncould serve.'\"\n\n[Footnote 1: \"W.,\" here and throughout this book, refers to Madame\nWaddington's husband, M. William Waddington.]\n\n[Illus"
+        },
+        {
+          "title": "A Voyage to the Moon by George Tucker",
+          "book_index": 5,
+          "pos_frac": 0.9908,
+          "snippet": "e,\n      With strong endeavour, and attention due.\"\n\n\n       *       *       *       *       *\n\n\n[APPENDIX FOOTNOTES]\n\n\n[Footnote 1: Scott's Swift, vol. xi. p. 4]\n\n\n[Footnote 2: Aristoph. in Pace. 130.]\n\n\n[Footnote 3: Orlando furioso, Canto"
+        },
+        {
+          "title": "Punchinello Vol. 1 No. 9 May 28 1870 by Various",
+          "book_index": 14,
+          "pos_frac": 0.4363,
+          "snippet": "we owe.\n    If you want better service, why send better men,\n    And be better yourselves. It will all be right, then.\n\n[Footnote 1: Political death, of course.]\n\n       *       *       *       *       *\n\nCome on, Ladies!\n\nAn Anti-mustache "
+        }
+      ]
+    },
+    "sidenote_tag": {
+      "occurrences": 101770,
+      "books_with": 475,
+      "books_with_frac": 0.0241,
+      "mean_first_pos": 0.1691,
+      "examples": [
+        {
+          "title": "Punchinello Vol. 1 No. 18 July 30 1870 by Various",
+          "book_index": 15,
+          "pos_frac": 0.0308,
+          "snippet": "NG COMPANY,\n\n83 NASSAU STREET, NEW YORK.\n\n\nTHE MYSTERY OF MR. E. DROOD,\nBy ORPHEUS C. KERR,\nContinued in this Number.\n\n\n[Sidenote: See 15th Page for Extra Premiums.]\n\n\n  +--------------------------------------------------------------+\n  |  "
+        },
+        {
+          "title": "Punchinello Vol. 1 No. 22 August 27 1870 by Various",
+          "book_index": 20,
+          "pos_frac": 0.0333,
+          "snippet": "ING COMPANY,\n\n83 NASSAU STREET, NEW YORK.\n\n\nTHE MYSTERY OF MR. E. DROOD,\nBy ORPHEUS C. KERR,\nContinued in this Number.\n\n[Sidenote: See 15th Page for Extra Premiums.]\n\n  +--------------------------------------------------------------+\n  |   "
+        },
+        {
+          "title": "Punchinello Vol. 2 No. 36 December 3 1870 by Various",
+          "book_index": 162,
+          "pos_frac": 0.0426,
+          "snippet": "LLUSTRATED CATALOGUE sent free on receipt of\nstamp.\n\nL. PRANG & CO., Boston.\n\n       *       *       *       *       *\n\n[Sidenote: See 15th Page for Extra Premiums.]\n\n\n  +--------------------------------------------------------------+\n  |  "
+        }
+      ]
+    },
+    "copyright_line": {
+      "occurrences": 22631,
+      "books_with": 7473,
+      "books_with_frac": 0.3788,
+      "mean_first_pos": 0.068,
+      "examples": [
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.0001,
+          "snippet": "roject Gutenberg\noften releases Etexts that are NOT placed in the Public Domain!!\n\nShakespeare\n\n*This Etext has certain copyright implications you should read!*\n\n<<THIS ELECTRONIC VERSION OF THE COMPLETE WORKS OF WILLIAM\nSHAKESPEARE IS COPY"
+        },
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.9363,
+          "snippet": "o sad associations--on the contrary, with the prospect of a\nlong happy future before her.\"\n\n[Illustration: _Photograph, copyright by Pierre Petit, Paris._\nPresident Sadi Carnot.]\n\nW. went the two or three Fridays we were in Paris to the Ins"
+        },
+        {
+          "title": "Divine Comedy Purgatory by Dante Alighieri",
+          "book_index": 21,
+          "pos_frac": 0.0005,
+          "snippet": "The Project Gutenberg Etext of Dante's Purgatory [Divine Comedy]\nTranslanted by Henry Wadsworth Longfellow\n\n\nCopyright laws are changing all over the world, be sure to check\nthe copyright laws for your country before posting thes"
+        }
+      ]
+    },
+    "rights_reserved": {
+      "occurrences": 2809,
+      "books_with": 2757,
+      "books_with_frac": 0.1397,
+      "mean_first_pos": 0.0194,
+      "examples": [
+        {
+          "title": "Kalitan Our Little Alaskan Cousin by Mary F. Nixon-Roulet",
+          "book_index": 148,
+          "pos_frac": 0.0214,
+          "snippet": "   L. C. Page & Company\n    _PUBLISHERS_\n\n\n\n\n    _Copyright, 1907_\n    BY L. C. PAGE & COMPANY\n    (INCORPORATED)\n\n    _All rights reserved_\n\n    Third Impression, May, 1909\n\n\n\n    TO MY LITTLE SON\n    John Nixon de Roulet\n\n\n\n\nPreface\n\n\nAWA"
+        },
+        {
+          "title": "Rose O' the River by Kate Douglas Wiggin",
+          "book_index": 176,
+          "pos_frac": 0.0027,
+          "snippet": "-------------------------------------------\n\nCOPYRIGHT 1905 BY THE CENTURY COMPANY\nCOPYRIGHT 1905 BY KATE DOUGLAS RIGGS\nALL RIGHTS RESERVED\n\n_Published September 1905_\n\n-----------------------------------------------------------------------"
+        },
+        {
+          "title": "The Reign of Greed by Jose Rizal",
+          "book_index": 431,
+          "pos_frac": 0.0009,
+          "snippet": "\n\n\n\n\nCopyright, 1912, by Philippine Education Company.\nEntered at Stationers' Hall.\nRegistrado en las Islas Filipinas.\n_All rights reserved_.\n\n\n\n\n\nTRANSLATOR'S INTRODUCTION\n\n\nEl Filibusterismo, the second of Jose Rizal's novels of Philippin"
+        }
+      ]
+    },
+    "public_domain": {
+      "occurrences": 4576,
+      "books_with": 1682,
+      "books_with_frac": 0.0853,
+      "mean_first_pos": 0.1069,
+      "examples": [
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.0001,
+          "snippet": "their\nLibrary of the Future and Shakespeare CDROMS.  Project Gutenberg\noften releases Etexts that are NOT placed in the Public Domain!!\n\nShakespeare\n\n*This Etext has certain copyright implications you should read!*\n\n<<THIS ELECTRONIC VERSIO"
+        },
+        {
+          "title": "Divine Comedy Purgatory by Dante Alighieri",
+          "book_index": 21,
+          "pos_frac": 0.0178,
+          "snippet": "tters.\n\n**Information prepared by the Project Gutenberg legal advisor**\n(Three Pages)\n\n\n***START**THE SMALL PRINT!**FOR PUBLIC DOMAIN ETEXTS**START***\nWhy is this \"Small Print!\" statement here?  You know: lawyers.\nThey tell us you might sue"
+        },
+        {
+          "title": "Divine Comedy Paradise by Dante Alighieri",
+          "book_index": 31,
+          "pos_frac": 0.0171,
+          "snippet": "tters.\n\n**Information prepared by the Project Gutenberg legal advisor**\n(Three Pages)\n\n\n***START**THE SMALL PRINT!**FOR PUBLIC DOMAIN ETEXTS**START***\nWhy is this \"Small Print!\" statement here?  You know: lawyers.\nThey tell us you might sue"
+        }
+      ]
+    },
+    "ebook_mention": {
+      "occurrences": 26915,
+      "books_with": 14118,
+      "books_with_frac": 0.7156,
+      "mean_first_pos": 0.739,
+      "examples": [
+        {
+          "title": "The Bible Both Testaments King James Version",
+          "book_index": 0,
+          "pos_frac": 1.0,
+          "snippet": ", Lord Jesus.\n\n22:21 The grace of our Lord Jesus Christ be with you all. Amen.\n\n\n\n\n\n\n\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The King James Bible\n\n*** "
+        },
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.2632,
+          "snippet": "nac to that?\n  POINS. And look whether the fiery Trigon, his man, be not lisping\n    to his master's old tables, his note-book, his counsel-keeper.\n  FALSTAFF. Thou dost give me flattering busses.\n  DOLL. By my troth, I kiss thee with a mos"
+        },
+        {
+          "title": "The House on the Borderland by William Hope Hodgson",
+          "book_index": 2,
+          "pos_frac": 0.9998,
+          "snippet": " the pen has trailed away\nover the paper; possibly, through fright and weakness.--Ed.\n\n\n\n\n\nEnd of the Project Gutenberg EBook of The House on the Borderland\nby William Hope Hodgson\n\n*** "
+        }
+      ]
+    },
+    "etext_mention": {
+      "occurrences": 44002,
+      "books_with": 7630,
+      "books_with_frac": 0.3867,
+      "mean_first_pos": 0.2676,
+      "examples": [
+        {
+          "title": "The Complete Works of William Shakespeare",
+          "book_index": 1,
+          "pos_frac": 0.0,
+          "snippet": "\n\n\n\nProduced by World Library, Inc., from their Library of the Future\n\n\n\n\nThis is the 100th Etext file presented by Project Gutenberg, and\nis presented in cooperation with World Library, Inc., from their\nLibrary "
+        },
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.7993,
+          "snippet": " the way of concessions. W., at any rate, would do\nno more, and it was evident that the Chamber would seize the first\npretext to overthrow the ministry. W. saw Grevy very often. He was\nopposed to any change, didn't want W. to go, said his p"
+        },
+        {
+          "title": "A Voyage to the Moon by George Tucker",
+          "book_index": 5,
+          "pos_frac": 0.0389,
+          "snippet": "on. During my third year at that place, in one of my excursions\nto Philadelphia, and for which I was always inventing pretexts, I became\nacquainted with one of those faces and forms which, in a youth of twenty,\nto see, admire, and love, is "
+        }
+      ]
+    },
+    "typo_note": {
+      "occurrences": 2800,
+      "books_with": 2391,
+      "books_with_frac": 0.1212,
+      "mean_first_pos": 0.583,
+      "examples": [
+        {
+          "title": "Aunt Jane's Nieces on Vacation by Edith Van Dyne",
+          "book_index": 53,
+          "pos_frac": 0.5297,
+          "snippet": "smile.\"\n\n\"Oh; that's a mistake,\" she said, glancing at the item. \"What I said was\na 'roguish' smile; but there's been a typographical error which Miss\nBriggs must have overlooked in reading the proof.\"\n\n\"Nevertheless,\" remarked Arthur, \"the"
+        },
+        {
+          "title": "A Select Collection of Old English Plays Vol. 7 (4th edn.) by Various",
+          "book_index": 182,
+          "pos_frac": 0.4581,
+          "snippet": "the present reprint, except where the readings of the\nother edition have been occasionally preferred, and where obvious\ntypographical errors have been rectified. Every minute particular in\nwhich the second 4to differs from the first, I have"
+        },
+        {
+          "title": "The History of a Crime by Victor Hugo",
+          "book_index": 218,
+          "pos_frac": 0.4024,
+          "snippet": "Two hours afterwards it was reported to us that the conflict had begun.\nThey were fighting in the Rue Aumaire.\n\n\n[10] A typographical error--it should read \"Article LXVIII.\" On the\nsubject of this placard the author of this book received th"
+        }
+      ]
+    },
+    "toc_heading": {
+      "occurrences": 7962,
+      "books_with": 6934,
+      "books_with_frac": 0.3515,
+      "mean_first_pos": 0.0667,
+      "examples": [
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.0013,
+          "snippet": "r of the Exposition, 1878.]\n\nMY FIRST YEARS AS A\nFRENCHWOMAN\n\n1876-1879\n\nBY\n\nMARY KING WADDINGTON\n\nILLUSTRATED\n\n1914\n\n\n\n\nCONTENTS\n\n   I. WHEN MACMAHON WAS PRESIDENT\n  II. IMPRESSIONS OF THE ASSEMBLY AT VERSAILLES\n III. M. WADDINGTON AS MINI"
+        },
+        {
+          "title": "The Warriors by Anna Robertson Brown Lindsay",
+          "book_index": 4,
+          "pos_frac": 0.0075,
+          "snippet": "g majesty and influence of the\nChristian faith.\n\nANNA ROBERTSON BROWN LINDSAY\n\n_Philadelphia, November_ 1_st_, 1902\n\n\n\n\nTABLE OF CONTENTS\n\n  I. CHORDS OF AWAKENING:\n     THE HIGHER CONQUEST\n\n II. PRELUDE:\n     THE CALL OF JESUS\n\nIII. PROCES"
+        },
+        {
+          "title": "The Mystery by Stewart Edward White and Samuel Hopkins Adams",
+          "book_index": 8,
+          "pos_frac": 0.0006,
+          "snippet": "readers\n\n\n\n\nTHE MYSTERY\n\nBY\n\nSTEWART EDWARD WHITE\n\nAND\n\nSAMUEL HOPKINS ADAMS\n\n_Illustrations by Will Crawford_\n\n1907\n\n\n\n\nCONTENTS\n\n\nPART ONE\n\nTHE SEA RIDDLE\n\nI.      DESERT SEAS\n\nII.     THE \"LAUGHING LASS\"\n\nIII.    THE DEATH SHIP\n\nIV.     "
+        }
+      ]
+    },
+    "index_heading": {
+      "occurrences": 1332,
+      "books_with": 1233,
+      "books_with_frac": 0.0625,
+      "mean_first_pos": 0.8407,
+      "examples": [
+        {
+          "title": "My First Years As A Frenchwoman 1876-1879 by Mary King Waddington",
+          "book_index": 3,
+          "pos_frac": 0.0025,
+          "snippet": "QUAI D'ORSAY\n  IX. M. WADDINGTON AS PRIME MINISTER\n   X. PARLIAMENT BACK IN PARIS\n  XI. LAST DAYS AT THE FOREIGN OFFICE\n\nINDEX\n\n\n\n\nILLUSTRATIONS\n\nMADAME WADDINGTON _Frontispiece\n  From a photograph taken in the year of the Exposition_, 1878"
+        },
+        {
+          "title": "Punchinello Vol. 1 No. 26 September 24 1870 by Various",
+          "book_index": 36,
+          "pos_frac": 0.6926,
+          "snippet": "t may induce SUSAN B. ANTHONY to go\npairing with some Revolutionary bachelor?\n\n       *       *       *       *       *\n\nINDEX\n\n  A.\n\n  About a Clock\n  Advice to Picnic Parties\n  Aerated Verbiage\n  Agricultural Column, Our\n  Albany Cock Rob"
+        },
+        {
+          "title": "Byron by John Nichol",
+          "book_index": 89,
+          "pos_frac": 0.0025,
+          "snippet": "POLITICS--THE CARBONARI--EXPEDITION TO GREECE--DEATH. 1821-1824.\n\nCHAPTER  XI.\nCHARACTERISTICS, AND PLACE IN LITERATURE\n\nINDEX\n\n\n\n\nBOOKS CONSULTED.\n\n1.  The Narrative of the Honourable John Byron, Commodore, in  a late\n    Expedition  Round"
+        }
+      ]
+    }
+  },
+  "structure_sample": {
+    "books_sampled": 790,
+    "lines": 6212125,
+    "digit_only_lines": 1830,
+    "all_caps_lines": 70805,
+    "leading_blank_lines": 2853
+  }
+}

@@ -1,0 +1,199 @@
+{
+ "shapes": {
+  "produced by|url=n|lines=2": 2169,
+  "transcribed from|url=y|lines=2": 337,
+  "produced by|url=y|lines=4": 8541,
+  "no-credit-first-para": 1586,
+  "produced by|url=n|lines=1": 6073,
+  "transcribed from|url=n|lines=2": 74,
+  "credit-ish-nonstd": 536,
+  "e-text prepared by|url=n|lines=2": 144,
+  "produced by|url=n|lines=3": 265,
+  "e-text prepared by|url=n|lines=1": 123,
+  "e-text prepared by|url=n|lines=3": 10,
+  "produced by|url=n|lines=4": 68,
+  "produced by|url=y|lines=3": 1997,
+  "produced by|url=y|lines=1": 56,
+  "this etext was prepared by|url=n|lines=1": 3,
+  "produced by|url=y|lines=2": 3219,
+  "produced by|url=y|lines=5": 766,
+  "e-text prepared by|url=y|lines=2": 491,
+  "e-text prepared by|url=y|lines=4": 302,
+  "transcribed from|url=n|lines=3": 7,
+  "e-text prepared by|url=y|lines=1": 8,
+  "e-text prepared by|url=y|lines=5": 16,
+  "this etext was prepared by|url=n|lines=2": 2,
+  "e-text prepared by|url=y|lines=3": 605,
+  "transcribed from|url=n|lines=1": 3,
+  "etext prepared by|url=y|lines=2": 1,
+  "transcribed from|url=y|lines=4": 26,
+  "this file was produced from|url=y|lines=1": 1,
+  "e-text prepared by|url=n|lines=4": 1,
+  "transcribed from|url=y|lines=3": 20,
+  "etext prepared by|url=n|lines=1": 1,
+  "transcribed from|url=y|lines=1": 6,
+  "produced by|url=n|lines=5": 46
+ },
+ "outliers": [
+  [
+   "The Dolorous Passion of Our Lord Jesus Christ",
+   "JESUS CHRIST***"
+  ],
+  [
+   "The Faith of Men by Jack London",
+   "The Project Gutenberg Etext of The Faith of Men, by Jack London\n#27-34 in our series by Jack London"
+  ],
+  [
+   "The Grip of Desire by Hector France",
+   "This file was produced by Carlo Traverso, Relka Bihari, Andrea Ball, and\nthe Project Gutenberg Online Distributed Proofreading Team from images\ngenerously made "
+  ],
+  [
+   "Tess of the d'Urbervilles by Thomas Hardy",
+   "E-text transcribed by Steve Menyhert, proof-read by Meredith Ricker and\nJohn Hamm, and revised by Joseph E. Loewenstein, M.D."
+  ],
+  [
+   "The Little Book of Modern Verse by Various",
+   "*The Project Gutenberg Etext of The Little Book of Modern Verse*\nEdited by Jessie B. Rittenhouse\n#1 in our series by Jessie B. Rittenhouse"
+  ],
+  [
+   "An Anthology of Australian Verse by Bertram Steven",
+   "The Project Gutenberg Etext of An Anthology of Australian Verse"
+  ],
+  [
+   "Essay on the Trial By Jury by Lysander Spooner",
+   "**The Project Gutenberg Etext of An Essay on the Trial By Jury**\n#1 in our series by Lysander Spooner"
+  ],
+  [
+   "North American Species of Cactus by John Coulter",
+   "The Project Gutenberg Etext of North American Species of Cactus\nby John M. Coulter"
+  ],
+  [
+   "Sidney Lanier by Edwin Mims",
+   "**The Project Gutenberg Etext of Sidney Lanier, by Edwin Mims**\n(A Biography of the Poet, Sidney Lanier)"
+  ],
+  [
+   "Select Poems of Sidney Lanier",
+   "**The Project Gutenberg Etext of Select Poems of Sidney Lanier**\nEdited by Morgan Callaway\nOur 3rd book regarding Sidney Lanier"
+  ],
+  [
+   "Origin and Nature of Emotions by George W. Crile",
+   "**The Project Gutenberg Etext of Origin and Nature of Emotions**"
+  ],
+  [
+   "The Original Writings of Samuel Adams Vol. 2",
+   "The Project Gutenberg Etext of The Writings of Samuel Adams, V 2"
+  ],
+  [
+   "Clotelle: a Tale of the Southern States by William",
+   "CLOTELLE: A TALE OF THE SOUTHERN STATES"
+  ],
+  [
+   "The Nile Tributaries of Abyssinia by Samuel W. Bak",
+   "Project Gutenberg Etext Nile Tributaries of Abyssinia, by Baker"
+  ],
+  [
+   "The Day's Work Part I by Rudyard Kipling",
+   "The Project Gutenberg Etext of The Day's Work/Part I, by Kipling\n#8 in our series by Rudyard Kipling"
+  ],
+  [
+   "Mary Barton by Elizabeth Cleghorn Gaskell",
+   "The Project Gutenberg Etext of Mary Barton, by Elizabeth Gaskell\n#4 in our series by Elizabeth Gaskell"
+  ],
+  [
+   "A Little Tour In France by Henry James",
+   "Project Gutenberg Etext A Little Tour In France, by Henry James\n#20 in our series by Henry James"
+  ],
+  [
+   "The Tempest by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n***************************The Tempest**************************"
+  ],
+  [
+   "The Merry Wives of Windsor by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The Merry Wiues of Windsor**********************"
+  ],
+  [
+   "The Comedy of Errors by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n**********************The Comedie of Errors*********************"
+  ],
+  [
+   "Much ado about Nothing by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n********************Much adoe about Nothing*********************"
+  ],
+  [
+   "Loves Labour Lost by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n***********************Loues Labour's lost**********************"
+  ],
+  [
+   "A Midsummer Nights Dream by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n*******************A Midsommer Nights Dreame********************"
+  ],
+  [
+   "The Merchant of Venice by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n*********************The Merchant of Venice*********************"
+  ],
+  [
+   "As you Like it by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n*************************As you Like it*************************"
+  ],
+  [
+   "All's well that Ends well by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n*******************All's Well, that Ends Well*******************"
+  ],
+  [
+   "Twelfe-Night by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************Twelfe Night, Or what you will******************"
+  ],
+  [
+   "The Winters Tale by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n************************The Winters Tale************************"
+  ],
+  [
+   "King John by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The life and death of King John*****************"
+  ],
+  [
+   "Richard II by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n*********The life and death of King Richard the Second***********"
+  ],
+  [
+   "Henry IV Part 1 by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The First Part of Henry the Fourth**************"
+  ],
+  [
+   "Henry IV Part 2 by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n********************Much adoe about Nothing*********************"
+  ],
+  [
+   "Henry V by William Shakespeare",
+   "***Project Gutenberg's Etext of Shakespeare's First Folio***\n*****************The Life of Henry the Fift*****************"
+  ],
+  [
+   "Henry VI Part 1 by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The first Part of Henry the Sixt****************"
+  ],
+  [
+   "Henry VI Part 2 by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n***************The second Part of Henry the Sixt***************"
+  ],
+  [
+   "Henry VI Part 3 by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The third Part of Henry the Sixt****************"
+  ],
+  [
+   "Richard III by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n***************The Tragedie of Richard the Third***************"
+  ],
+  [
+   "Coriolanus by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n********************The Tragedie of Coriolanus******************"
+  ],
+  [
+   "Titus Andronicus by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The Tragedie of Titus Andronicus****************"
+  ],
+  [
+   "Romeo and Juliet by William Shakespeare",
+   "***The Project Gutenberg's Etext of Shakespeare's First Folio***\n****************The Tragedie of Romeo and Juliet****************"
+  ]
+ ]
+}

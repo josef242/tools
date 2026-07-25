@@ -1,0 +1,412 @@
+<title>Bookclean — The Cleaning Board</title>
+<style>
+  :root{
+    --bg:#0e1319; --panel:#151d27; --panel2:#1b2531; --line:#2a3644;
+    --text:#e7edf3; --muted:#8b9aa9; --faint:#63717f;
+    --accent:#4bb3a6; --accent-dim:#2c6a63;
+    --ship:#48a870; --cand:#d3a341; --kill:#cb5b48; --research:#7b8ed0; --neutral:#6d7c8a;
+    --barbg:#232f3c;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#eaeef2; --panel:#ffffff; --panel2:#f4f7f9; --line:#dbe2e9;
+      --text:#18212b; --muted:#576673; --faint:#8695a2;
+      --accent:#2c8a7e; --accent-dim:#a7d8d1;
+      --ship:#2f8d5b; --cand:#b6832a; --kill:#bb4d3b; --research:#5566b8; --neutral:#778795;
+      --barbg:#e4eaef;
+      --shadow:0 1px 2px rgba(20,40,60,.06), 0 10px 30px rgba(20,40,60,.08);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1319; --panel:#151d27; --panel2:#1b2531; --line:#2a3644;
+    --text:#e7edf3; --muted:#8b9aa9; --faint:#63717f;
+    --accent:#4bb3a6; --accent-dim:#2c6a63;
+    --ship:#48a870; --cand:#d3a341; --kill:#cb5b48; --research:#7b8ed0; --neutral:#6d7c8a;
+    --barbg:#232f3c;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"]{
+    --bg:#eaeef2; --panel:#ffffff; --panel2:#f4f7f9; --line:#dbe2e9;
+    --text:#18212b; --muted:#576673; --faint:#8695a2;
+    --accent:#2c8a7e; --accent-dim:#a7d8d1;
+    --ship:#2f8d5b; --cand:#b6832a; --kill:#bb4d3b; --research:#5566b8; --neutral:#778795;
+    --barbg:#e4eaef;
+    --shadow:0 1px 2px rgba(20,40,60,.06), 0 10px 30px rgba(20,40,60,.08);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    font-variant-numeric:tabular-nums; letter-spacing:-.01em;}
+  .wrap{max-width:1180px; margin:0 auto; padding:44px 26px 80px;}
+
+  .eyebrow{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent);
+    font-weight:650; margin:0 0 10px;}
+  h1{font-size:clamp(26px,3.4vw,38px); line-height:1.08; margin:0 0 12px; font-weight:720;
+    letter-spacing:-.02em; text-wrap:balance;}
+  .lede{font-size:16px; color:var(--muted); max-width:70ch; margin:0;}
+  .updated{margin-top:14px; font-size:12px; color:var(--faint);}
+
+  h2{font-size:13px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted);
+    font-weight:650; margin:52px 0 4px;}
+  .h2sub{font-size:13.5px; color:var(--faint); margin:0 0 18px;}
+
+  /* KPI strip */
+  .kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:30px;}
+  .kpi{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 16px 15px;
+    box-shadow:var(--shadow);}
+  .kpi .k{font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--faint); margin:0 0 8px;}
+  .kpi .v{font-size:23px; font-weight:700; letter-spacing:-.02em; margin:0;}
+  .kpi .v small{font-size:13px; font-weight:500; color:var(--muted); letter-spacing:0;}
+  .kpi .sub{font-size:12px; color:var(--muted); margin:4px 0 0;}
+
+  /* Ladder */
+  .ladder{display:flex; flex-direction:column; gap:10px;}
+  .step{display:grid; grid-template-columns:118px 1fr 168px 150px; gap:20px; align-items:center;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px;
+    box-shadow:var(--shadow); position:relative;}
+  .step.record{border-color:var(--ship);}
+  .step.cand{border-color:var(--cand);}
+  .vid{display:flex; flex-direction:column; gap:3px;}
+  .vid .ver{font-size:19px; font-weight:720; letter-spacing:-.01em;}
+  .vid .file{font-size:11px; color:var(--faint);}
+  .method .m{font-weight:640; font-size:14.5px; margin:0 0 3px;}
+  .method .d{font-size:13px; color:var(--muted); margin:0; max-width:56ch;}
+  .metrics{display:flex; flex-direction:column; gap:7px;}
+  .delta{display:flex; align-items:baseline; gap:8px;}
+  .delta .amt{font-size:15px; font-weight:680;}
+  .delta .lbl{font-size:11px; color:var(--faint);}
+  .bar{height:6px; background:var(--barbg); border-radius:4px; overflow:hidden;}
+  .bar > i{display:block; height:100%; border-radius:4px;}
+  .touched{font-size:12px; color:var(--muted);}
+  .statuscol{display:flex; flex-direction:column; gap:8px; align-items:flex-start;}
+
+  .chip{display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:640;
+    padding:4px 9px; border-radius:999px; letter-spacing:.02em; white-space:nowrap;}
+  .chip::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.9;}
+  .chip.ship{color:var(--ship); background:color-mix(in srgb,var(--ship) 15%,transparent);}
+  .chip.cand{color:var(--cand); background:color-mix(in srgb,var(--cand) 16%,transparent);}
+  .chip.kill{color:var(--kill); background:color-mix(in srgb,var(--kill) 15%,transparent);}
+  .chip.research{color:var(--research); background:color-mix(in srgb,var(--research) 16%,transparent);}
+  .chip.neutral{color:var(--neutral); background:color-mix(in srgb,var(--neutral) 15%,transparent);}
+  .chip.plain{background:transparent; padding-left:0;}
+  .chip.plain::before{display:none;}
+
+  .harm{font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:650;
+    padding:3px 7px; border-radius:5px; white-space:nowrap;}
+  .harm.hi{color:#0e1319; background:var(--accent);}
+  .harm.mod{color:var(--cand); border:1px solid color-mix(in srgb,var(--cand) 55%,transparent);}
+  .harm.lo{color:var(--faint); border:1px solid var(--line);}
+  :root[data-theme="light"] .harm.hi{color:#fff;}
+  @media (prefers-color-scheme:light){.harm.hi{color:#fff;}}
+
+  .gold{font-size:12px; color:var(--ship); font-weight:600; display:flex; align-items:center; gap:5px;}
+
+  /* Table (bake-off) */
+  .tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow);}
+  table{border-collapse:collapse; width:100%; min-width:760px; background:var(--panel);}
+  th,td{text-align:left; padding:13px 16px; border-bottom:1px solid var(--line); vertical-align:top;}
+  thead th{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint);
+    font-weight:650; background:var(--panel2); position:sticky; top:0;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover td{background:color-mix(in srgb,var(--accent) 5%,transparent);}
+  td .tech{font-weight:660; font-size:14px;}
+  td .what{font-size:12.5px; color:var(--muted); margin-top:2px; max-width:34ch;}
+  td .res{font-size:12.5px; color:var(--text); max-width:40ch;}
+  td.num{font-family:ui-monospace,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums;}
+
+  /* harm-proxy mini viz */
+  .proxy{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:8px;}
+  .pcard{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:15px 16px;
+    box-shadow:var(--shadow);}
+  .pcard .plabel{font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--faint); margin:0 0 12px;}
+  .prow{display:flex; align-items:center; gap:9px; margin-bottom:7px;}
+  .prow .tag{font-size:11px; width:30px; color:var(--muted); font-weight:600;}
+  .pbar{flex:1; height:9px; background:var(--barbg); border-radius:5px; overflow:hidden;}
+  .pbar > i{display:block; height:100%; border-radius:5px;}
+  .prow .pv{font-size:12px; font-weight:660; width:52px; text-align:right;
+    font-variant-numeric:tabular-nums;}
+  .pdrop{font-size:13px; font-weight:700; color:var(--accent); margin-top:9px;}
+
+  /* lessons */
+  .lessons{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;}
+  .lesson{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:10px; padding:14px 16px; box-shadow:var(--shadow);}
+  .lesson .n{font-size:11px; font-weight:700; color:var(--accent); letter-spacing:.03em;}
+  .lesson p{margin:5px 0 0; font-size:13.5px; color:var(--text);}
+  .lesson.debt{border-left-color:var(--cand);} .lesson.debt .n{color:var(--cand);}
+
+  .foot{margin-top:46px; font-size:12px; color:var(--faint); border-top:1px solid var(--line); padding-top:16px;}
+  .foot code{font-family:ui-monospace,Menlo,monospace; color:var(--muted);}
+
+  @media (max-width:860px){
+    .kpis{grid-template-columns:repeat(2,1fr);}
+    .step{grid-template-columns:1fr; gap:12px;}
+    .proxy{grid-template-columns:repeat(2,1fr);}
+    .lessons{grid-template-columns:1fr;}
+  }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">RedPajama Books Corpus · KEEL Training Data</p>
+  <h1>The Cleaning Board</h1>
+  <p class="lede">One view of the whole pipeline: every version shipped into the corpus, every detection
+  method tried, and where each one landed — scored on the axes that actually matter (how much real junk
+  it cuts, whether it eats learnable prose, and how hard it was to run).</p>
+  <p class="updated">Updated 2026-07-15 · rig-27 · source of truth: <span class="mono">reports/PROJECT_STATE.md</span></p>
+
+  <div class="kpis">
+    <div class="kpi"><p class="k">Corpus</p><p class="v mono">107.8<small> GB</small></p><p class="sub">205,744 books · PG19 + Books3</p></div>
+    <div class="kpi"><p class="k">Cleaned so far</p><p class="v mono">~528<small> MB</small></p><p class="sub">0.49% of bytes · junk-dense</p></div>
+    <div class="kpi"><p class="k">Corpus of record</p><p class="v">v11</p><p class="sub">within-book dedup · shipped</p></div>
+    <div class="kpi"><p class="k">Full recipe</p><p class="v" style="font-size:15px; line-height:1.35">de-redact → boundary<br>→ 2× dedup</p><p class="sub">all complementary</p></div>
+    <div class="kpi"><p class="k">v11 magnet cut</p><p class="v mono" style="color:var(--accent)">−53%</p><p class="sub">peak within-book 10-gram</p></div>
+  </div>
+
+  <h2>Board 1 — The Corpus Ladder</h2>
+  <p class="h2sub">What is actually in the data today, and what each pass removed. Bar length = volume removed;
+  bar <em>color</em> = harm-density of that junk. The lesson lives in the mismatch: the biggest bar (boundary)
+  is the <em>least</em> harmful junk; the small dedup bars are the memorization magnets.</p>
+
+  <div class="ladder">
+
+    <div class="step">
+      <div class="vid"><span class="ver">Original</span><span class="file mono">book.jsonl</span></div>
+      <div class="method">
+        <p class="m">Raw RedPajama 1T — books slice</p>
+        <p class="d">PG19 (first 11.3 GB, DeepMind Gutenberg) + Books3 (~96.5 GB modern ebooks). Word-redacted, boilerplate-laden, page-furniture throughout.</p>
+      </div>
+      <div class="metrics">
+        <div class="delta"><span class="amt mono">107.84 GB</span><span class="lbl">baseline</span></div>
+        <div class="touched">205,744 books</div>
+      </div>
+      <div class="statuscol"><span class="chip neutral">Baseline</span></div>
+    </div>
+
+    <div class="step">
+      <div class="vid"><span class="ver">v1</span><span class="file mono">book.v1.jsonl</span></div>
+      <div class="method">
+        <p class="m">De-redaction — reverse the word filter</p>
+        <p class="d">Reversed an Ofcom-list <span class="mono">&lt;DWnn&gt;</span> word filter that had blanked profanity/slurs. 270,903 restorations at 99.95% word-accuracy vs Gutenberg originals. Restores learnable text — length-preserving.</p>
+      </div>
+      <div class="metrics">
+        <div class="delta"><span class="amt mono">+270,903</span><span class="lbl">words restored</span></div>
+        <div class="bar"><i style="width:2%; background:var(--accent-dim)"></i></div>
+        <div class="touched">−161 KB net · corpus-wide</div>
+      </div>
+      <div class="statuscol"><span class="chip ship">Foundation</span><span class="gold">✓ 99.95% accuracy</span></div>
+    </div>
+
+    <div class="step">
+      <div class="vid"><span class="ver">v2–v8</span><span class="file mono">iterations</span></div>
+      <div class="method">
+        <p class="m">Boundary detection — the long road</p>
+        <p class="d">PG19 credits + Books3 front/back-matter, iterated seven ways. <strong>v8 cut ~35M tokens of learnable prose</strong> (bibliographies, bios, notes) — every jury blessed it because we wrote the rubric. The independent OCR project caught it. Superseded.</p>
+      </div>
+      <div class="metrics">
+        <div class="delta"><span class="amt mono">superseded</span><span class="lbl">wrong target</span></div>
+        <div class="touched">the pivotal mistake → the policy</div>
+      </div>
+      <div class="statuscol"><span class="chip neutral">Superseded</span></div>
+    </div>
+
+    <div class="step">
+      <div class="vid"><span class="ver">v9</span><span class="file mono">book.v9.jsonl</span></div>
+      <div class="method">
+        <p class="m">Structural boundary — final</p>
+        <p class="d">sentinel2 (heads) + sentinel3 (tails), structural-hybrid policy, single high-confidence cut. Removes contiguous front/back matter: ISBN/copyright, alphabetical indexes, marketing, end-dumped TOCs. Keeps epilogues, bios, citations, glossaries-with-defs.</p>
+      </div>
+      <div class="metrics">
+        <div class="delta"><span class="amt mono">−395 MB</span><span class="lbl">bulk matter</span></div>
+        <div class="bar"><i style="width:100%; background:var(--faint)"></i></div>
+        <div class="touched">boundary blocks · ~25% recall ceiling</div>
+      </div>
+      <div class="statuscol"><span class="harm lo">Low–Mod harm</span><span class="gold" style="color:var(--cand)">◑ clips bibliographies (3/100 edge)</span></div>
+    </div>
+
+    <div class="step">
+      <div class="vid"><span class="ver">v10</span><span class="file mono">book.v10.jsonl</span></div>
+      <div class="method">
+        <p class="m">Cross-book dedup</p>
+        <p class="d">Removes boilerplate <em>lines</em> that recur across ≥3 books (digit-normalized), with a per-book circuit breaker. Catches the publisher templates that appear everywhere — memorization magnets regardless of position, including the buried ones boundaries structurally can't reach.</p>
+      </div>
+      <div class="metrics">
+        <div class="delta"><span class="amt mono">−47 MB</span><span class="lbl">45.3M chars</span></div>
+        <div class="bar"><i style="width:24%; background:var(--accent)"></i></div>
+        <div class="touched">147,770 books (71.8%) · 86 flagged</div>
+      </div>
+      <div class="statuscol"><span class="chip ship">Shipped</span><span class="harm hi">High harm</span><span class="gold">✓ audit 100% boilerplate</span></div>
+    </div>
+
+    <div class="step cand">
+      <div class="vid"><span class="ver">v11</span><span class="file mono">book.v11.jsonl</span></div>
+      <div class="method">
+        <p class="m">Within-book dedup</p>
+        <p class="d">Removes furniture that repeats <em>inside one book</em>: page numbers (<span class="mono">###.</span> ×2.97M), table syntax (<span class="mono">---|---</span>), nav/pagelists, and degenerate OCR lines (<span class="mono">here here here…</span>). Protects dialogue, scene-breaks, refrains, numbered headings, citations, and drama speaker tags.</p>
+      </div>
+      <div class="metrics">
+        <div class="delta"><span class="amt mono">−85 MB</span><span class="lbl">74.6M chars</span></div>
+        <div class="bar"><i style="width:43%; background:var(--accent)"></i></div>
+        <div class="touched">29,449 books (14.3%) · 496 flagged</div>
+      </div>
+      <div class="statuscol"><span class="chip ship">Corpus of record</span><span class="harm hi">High harm</span><span class="gold">✓ 0 prose removed</span></div>
+    </div>
+
+  </div>
+
+  <h2>v11 in focus — memorization-magnet reduction</h2>
+  <p class="h2sub">Peak within-book 10-gram repeat per book, measured on 10,000 record-aligned Books3 books. This metric
+  is <em>independent</em> of what the filter targeted (10-gram tokens, not the line signal it cut) — so it's a real check,
+  not a restatement.</p>
+  <div class="proxy">
+    <div class="pcard">
+      <p class="plabel">Mean magnet</p>
+      <div class="prow"><span class="tag">v10</span><span class="pbar"><i style="width:100%; background:var(--neutral)"></i></span><span class="pv mono">31.6</span></div>
+      <div class="prow"><span class="tag">v11</span><span class="pbar"><i style="width:47%; background:var(--accent)"></i></span><span class="pv mono">14.8</span></div>
+      <p class="pdrop mono">−53%</p>
+    </div>
+    <div class="pcard">
+      <p class="plabel">p90 magnet</p>
+      <div class="prow"><span class="tag">v10</span><span class="pbar"><i style="width:100%; background:var(--neutral)"></i></span><span class="pv mono">81</span></div>
+      <div class="prow"><span class="tag">v11</span><span class="pbar"><i style="width:40%; background:var(--accent)"></i></span><span class="pv mono">32</span></div>
+      <p class="pdrop mono">−60%</p>
+    </div>
+    <div class="pcard">
+      <p class="plabel">Max magnet</p>
+      <div class="prow"><span class="tag">v10</span><span class="pbar"><i style="width:100%; background:var(--neutral)"></i></span><span class="pv mono">10,346</span></div>
+      <div class="prow"><span class="tag">v11</span><span class="pbar"><i style="width:39%; background:var(--accent)"></i></span><span class="pv mono">4,013</span></div>
+      <p class="pdrop mono">−61%</p>
+    </div>
+    <div class="pcard">
+      <p class="plabel">Books ≥50× magnet</p>
+      <div class="prow"><span class="tag">v10</span><span class="pbar"><i style="width:100%; background:var(--neutral)"></i></span><span class="pv mono">1,329</span></div>
+      <div class="prow"><span class="tag">v11</span><span class="pbar"><i style="width:43%; background:var(--accent)"></i></span><span class="pv mono">577</span></div>
+      <p class="pdrop mono">−57%</p>
+    </div>
+  </div>
+  <p class="h2sub" style="margin-top:16px">Meanwhile the bulk duplicate-line fraction barely moved (−2.7%) — by design. We removed the
+  <em>high-multiplicity</em> furniture (the peak halves) while leaving benign repetition — dialogue, refrains,
+  scene-breaks — untouched.</p>
+
+  <h2>Board 2 — The Methods Bake-off</h2>
+  <p class="h2sub">Every detection technique tried, and the verdict. This is the map of what works, what was killed, and what's parked.</p>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Technique</th><th>Signature result</th><th class="num">Content safety</th><th>Compute</th><th>Verdict</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="tech">Structural boundary (rules)</div><div class="what">sentinel2/3 — single content-start/end cut</div></td>
+          <td><div class="res">Won the head bake-off 1.98 vs 10.90 cost. Recall caps at ~25% — an architectural ceiling from non-monotone back matter, not a model failure.</div></td>
+          <td class="num">0 gold cut</td>
+          <td>CPU · days of eng</td>
+          <td><span class="chip ship">Shipped · v9</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">Multi-span cutter</div><div class="what">cut several junk spans in the tail</div></td>
+          <td><div class="res">Higher raw recall on paper, but a single wrong span punches a hole through prose. Failed three times, each after looking good on the prior metric.</div></td>
+          <td class="num">17% content-cut</td>
+          <td>CPU</td>
+          <td><span class="chip kill">Killed ×3</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">Cross-book dedup</div><div class="what">lines duplicated across ≥3 books</div></td>
+          <td><div class="res">45.3M chars over 72% of books. Attacks the HIGH-harm cross-book magnets directly — hours of CPU vs days of boundary GPU. Inverted the sequencing: dedup first.</div></td>
+          <td class="num">gold-safe</td>
+          <td>CPU · hours</td>
+          <td><span class="chip ship">Shipped · v10</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">Within-book dedup</div><div class="what">furniture repeated inside one book</div></td>
+          <td><div class="res">74.6M chars. Peak memorization magnet −53%, books with a severe (≥50×) magnet −57%. Two detectors: repeated-line furniture + degenerate-line.</div></td>
+          <td class="num">0 prose</td>
+          <td>CPU · ~40 min</td>
+          <td><span class="chip ship">Shipped · v11</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">MiniLM-22M classifier</div><div class="what">paragraph junk-vs-content</div></td>
+          <td><div class="res">99.6% junk-precision @0.99. But wired as a promoter it eats content (one FP moves the boundary) — net −9,028 under our own asymmetric cost.</div></td>
+          <td class="num">net-negative</td>
+          <td>GPU</td>
+          <td><span class="chip research">Research</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">DistilBERT-66M</div><div class="what">3× larger classifier</div></td>
+          <td><div class="res">+5 pts recall at fixed precision vs MiniLM at matched epochs — size helps, but modest and moot for production. A clean size-axis datapoint.</div></td>
+          <td class="num">same issue</td>
+          <td>GPU</td>
+          <td><span class="chip research">Research</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">NN-as-judge (veto)</div><div class="what">aggressive operator proposes, NN vetoes</div></td>
+          <td><div class="res">Always safe (0 eaten), but final recall = proposer coverage × judge pass-rate — bound by a 3% proposer. Fix: content-evidence veto + max-recall proposer + clean book-split retrain.</div></td>
+          <td class="num">0 eaten</td>
+          <td>GPU</td>
+          <td><span class="chip research">Gated</span></td>
+        </tr>
+        <tr>
+          <td><div class="tech">Opus LLM juries</div><div class="what">label &amp; referee cut decisions</div></td>
+          <td><div class="res">Useful for labeling — but blessed the wrong v8 because we wrote the rubric. Correction: referee must anchor to human labels, not model labels.</div></td>
+          <td class="num">use w/ care</td>
+          <td>API</td>
+          <td><span class="chip neutral">Tool</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Board 3 — The Harm Ablation Verdict</h2>
+  <p class="h2sub">The standing-debt experiment finally ran (132M KEEL toy, 3 seeds/arm, pre-registered).
+  Arm A trained <em>with</em> the junk, arm B <em>without</em> — identical recipe + data order — so any gap
+  <em>is</em> the junk's effect. It took our foundational assumption off faith and put a number on it.</p>
+
+  <div class="kpis" style="margin-top:22px">
+    <div class="kpi"><p class="k">Memorization gap</p><p class="v mono">1.61<small>×</small></p><p class="sub">26σ — real but modest (&lt;10× bar)</p></div>
+    <div class="kpi"><p class="k">Content control</p><p class="v mono" style="color:var(--ship)">null</p><p class="sub">A=B on real text · junk-specific</p></div>
+    <div class="kpi"><p class="k">Within-book furniture</p><p class="v mono">1.00<small>×</small></p><p class="sub">zero gap — compressible</p></div>
+    <div class="kpi"><p class="k">Cross-book boilerplate</p><p class="v mono" style="color:var(--kill)">11<small>×</small></p><p class="sub">the real magnets (worst 2%)</p></div>
+  </div>
+
+  <div style="background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin-top:16px; box-shadow:var(--shadow)">
+    <p style="margin:0 0 6px; font-size:12px; letter-spacing:.13em; text-transform:uppercase; color:var(--accent); font-weight:650">The harm model — a mechanism, not a vibe</p>
+    <p class="mono" style="font-size:15px; margin:6px 0 14px; color:var(--text)">JUNK&nbsp;HARM &nbsp;∝&nbsp; FREQUENCY &nbsp;×&nbsp; SLOT-UNCONTESTEDNESS &nbsp;×&nbsp; INCOMPRESSIBILITY</p>
+    <table style="min-width:0"><tbody>
+      <tr><td><span class="mono">&lt;DWnn&gt;</span> redaction token</td><td class="what">fails frequency + contestedness</td><td><span class="chip ship">0 emission</span> <span style="color:var(--faint); font-size:12px">271k tokens, years of runs</span></td></tr>
+      <tr><td>Furniture (<span class="mono">###.</span>)</td><td class="what">frequent + uncontested but <em>compressible</em></td><td><span class="chip neutral">0 gap</span> <span style="color:var(--faint); font-size:12px">clean model reconstructs it</span></td></tr>
+      <tr><td>CIP / publisher boilerplate</td><td class="what">frequent + uncontested + <em>incompressible</em></td><td><span class="chip kill">11×</span> <span style="color:var(--faint); font-size:12px">maxes all three axes</span></td></tr>
+    </tbody></table>
+    <p style="margin:12px 0 0; font-size:12.5px; color:var(--muted)">Three experiments — observational (redaction natural experiment), controlled (this ablation), arithmetic (slot competition) — each pinned one axis. <strong>Duplication was the harm axis all along.</strong></p>
+  </div>
+
+  <div class="lessons" style="margin-top:16px">
+    <div class="lesson"><span class="n">✓ confirmed</span><p><strong>Content control null</strong> (−0.004): the gap is junk-specific. <strong>Cross-book dedup (v10)</strong> removes the real magnets — value empirically confirmed.</p></div>
+    <div class="lesson debt"><span class="n">✗ killed claim (Rook #216)</span><p><strong>"Within-book magnets cause gradient anomalies / loss-spikes"</strong> — did NOT replicate (229 vs 211 outliers = nothing). Logged, with his name on it.</p></div>
+    <div class="lesson debt"><span class="n">⚠ spec bug</span><p>The pre-reg threshold never defined the <em>population</em> — so 1.6× (aggregate) and 11× (worst-2%) both read legitimately. Lesson: <strong>pre-register the population, not just the threshold.</strong></p></div>
+    <div class="lesson"><span class="n">↺ reframe</span><p>The 20× cut-asymmetry is <strong>vindicated, not indicted</strong>: smaller junk-harm → leaving junk is cheaper → true asymmetry &gt; 20× → <em>"when in doubt, keep"</em> now has empirical backing.</p></div>
+  </div>
+  <p class="h2sub" style="margin-top:14px">Reframe of v11: within-book dedup shows ~no <em>training-harm</em> value at this scale — kept as <strong>corpus hygiene</strong> (free, zero content damage), not memorization defense. Caveat: 130M / 0.63 epoch = a <em>lower bound</em>. Next: the <strong>multi-epoch × capacity scaling grid</strong> → predict the gap at wizard101's real 4.6B scale. Span judge: dead. Contingent successor: lower cross-book dup threshold 3→2 (the untouched 2-book bucket = 92% of dup lines).</p>
+
+  <h2>Hard-won lessons</h2>
+  <p class="h2sub">The things that cost time to learn — kept here so they don't have to be re-learned.</p>
+  <div class="lessons">
+    <div class="lesson"><span class="n">01 · Rules &gt; LLMs for boundaries</span><p>Our engine and the independent OCR project reached this separately. Per-item neural classification loses the cross-item coherence a boundary needs.</p></div>
+    <div class="lesson"><span class="n">02 · Knowing you're right is the hard part</span><p>v8 cut learnable prose for two days and every jury approved — because we wrote the rubric. An external, decorrelated view is what exposed it.</p></div>
+    <div class="lesson"><span class="n">03 · The metric can reward doing nothing</span><p>Under a 20× eat-penalty, a filter that cuts 0% scores "great." Always report marginal-over-rules recall <em>and</em> content-eaten, never AUC alone.</p></div>
+    <div class="lesson"><span class="n">04 · The ~25% ceiling is architectural</span><p>Single-cut recall is capped by non-monotone back matter (junk interleaved with prose). Not a classifier, gold, or rules problem — structural.</p></div>
+    <div class="lesson"><span class="n">05 · Harm decomposition inverted the plan</span><p>Half the unreachable tail junk is near-zero-harm fluent prose; the dangerous part is duplicated boilerplate. So dedup comes <em>first</em> — it catches the magnets nearly free.</p></div>
+    <div class="lesson"><span class="n">06 · Standing debt — PAID</span><p>The belief everything proxied — "junk hurts training" — was finally tested (Board 3). Verdict: real but modest (1.6×), and duplication was the harm axis all along. The harness survived contact with its own ground truth: two claims died in public, and the surviving conclusion is load-bearing.</p></div>
+  </div>
+
+  <p class="foot">Recipe today = <strong>de-redaction → structural boundary (v9) → cross-book dedup (v10) → within-book dedup (v11)</strong>,
+  all complementary, all CPU-cheap after the boundary engineering. <strong>v11 is corpus of record.</strong>
+  The harm ablation is complete — cross-book dedup empirically confirmed, within-book reframed as hygiene, the span judge dead. Next: the multi-epoch × capacity scaling grid to read the memorization gap at production scale.
+  Parked for v12 — exempt pure-syntax lines (<code>|</code>, <code>---|---</code>) from the within-book circuit breaker so pipe-scaffolded classics get cleaned too.</p>
+
+</div>

@@ -1,0 +1,58 @@
+{
+ "round": 1,
+ "date": "2026-07-13",
+ "task": "books3 front/back-matter boundary detection",
+ "labels": {
+  "heads": 11,
+  "tails": 4,
+  "labeling_method": "disagreement-targeted + random, focused views with post-boundary verification"
+ },
+ "leaderboard_heads": {
+  "sentinel": {
+   "medAbsErr": 20,
+   "within150": "8/11",
+   "junk_left_500": 3,
+   "catastrophic": 0
+  },
+  "hybrid": {
+   "medAbsErr": 20,
+   "within150": "8/11",
+   "junk_left_500": 3,
+   "catastrophic": 0
+  },
+  "prosefall": {
+   "medAbsErr": 1023,
+   "within150": "4/11",
+   "junk_left_500": 7,
+   "catastrophic": 0
+  },
+  "lexis": {
+   "medAbsErr": 1023,
+   "within150": "3/11",
+   "junk_left_500": 7,
+   "catastrophic": 1
+  }
+ },
+ "leaderboard_tails": {
+  "sentinel/hybrid": "3/4 exact, 1 mild junk-left (1.1KB biblio), 0 catastrophic",
+  "prosefall": "1/4 (keeps everything)",
+  "lexis": "1/4"
+ },
+ "verdict": "sentinel (junk-cluster chaining) wins decisively; hybrid adds nothing over sentinel yet; pure changepoint methods lose because front/back matter contains fluent legal prose",
+ "architecture_findings": [
+  "junk is a CLUSTER: markers+structural evidence chained with <=600-char gaps beats both last-marker and first-clean-run logic",
+  "marker-free legal prose must be bridged by neighboring markers; content with incidental markers must NOT chain (asymmetry handled by gap size + strong anchors)",
+  "tails need head markers too (trailing-copyright ebooks)",
+  "strong-anchor requirement prevents genre-content catastrophes (hotel listings, kanji entries)"
+ ],
+ "failure_taxonomy_open": [
+  "list-content genres (travel guides, reference): residual junk-left ~1.3KB (176042); content IS listy so prose-run boundary is soft",
+  "gray-zone policy needed: letter-to-reader, playlists, epigraph pages (122177 -1383)",
+  "multi-KB legal blocks with sparse markers (100815 -1646): chain dies mid-block",
+  "bibliography line detector too weak (112405: 1.1KB biblio left)"
+ ],
+ "labeling_lessons": [
+  "every label must verify post-boundary prose (2 of 17 labels corrected after method disagreement exposed them)",
+  "methods disagreeing with a label is evidence against the LABEL ~15% of the time"
+ ]
+}

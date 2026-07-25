@@ -1,0 +1,32 @@
+{
+ "tiny-32": {
+  "params": 641,
+  "val_acc": 0.902,
+  "best_val_auc": 0.9678,
+  "sec": 2.8
+ },
+ "baseline-96x96": {
+  "params": 11233,
+  "val_acc": 0.916,
+  "best_val_auc": 0.978,
+  "sec": 3.3
+ },
+ "wide-384x384": {
+  "params": 155521,
+  "val_acc": 0.9218,
+  "best_val_auc": 0.9801,
+  "sec": 3.4
+ },
+ "deep-192x4": {
+  "params": 115009,
+  "val_acc": 0.9273,
+  "best_val_auc": 0.9816,
+  "sec": 4.5
+ },
+ "huge-768x768x768": {
+  "params": 1196545,
+  "val_acc": 0.9245,
+  "best_val_auc": 0.9813,
+  "sec": 14.1
+ }
+}

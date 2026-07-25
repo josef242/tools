@@ -1,0 +1,21 @@
+{
+  "version": "book.v3.jsonl", "date": "2026-07-13",
+  "pass": "books3 front/back matter (production sentinel + safety rails)",
+  "totals": {"books3_heads_cut": 127724, "books3_tails_cut": 83360,
+             "flagged_uncut": 2347, "chars_removed": 581722260,
+             "ledger_entries": 169657},
+  "verification": {"line_count": "205744 = source", "pg19": "byte-identical passthrough"},
+  "eval_scorecard_books3": {
+    "isbn":            {"heads": "20->2",  "tails": "29->0"},
+    "copyright_sym":   {"heads": "38->3",  "tails": "32->3"},
+    "rights_reserved": {"heads": "32->1",  "tails": "25->1"},
+    "toc_lines":       {"heads": "40->7",  "tails": "5->1"},
+    "publisher_www":   {"heads": "18->4",  "tails": "35->8"},
+    "about_author":    {"heads": "17->6",  "tails": "10->8", "note": "weakest probe - bio prose mid-window; v4 candidate"}
+  },
+  "known_edges": [
+    "md chapter headings adjacent to junk get consumed (~tens of chars; EnJoe PROLOGUE case)",
+    "about-the-author bios in tails partially survive (prose-like)",
+    "2,347 cap-flagged books left uncut - review queue"
+  ]
+}

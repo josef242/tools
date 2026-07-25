@@ -1,0 +1,19 @@
+{
+ "ckpt": "/tmp/claude-1000/-home-josef-valhalla-code-tools/cb79b2c8-338c-4b45-9621-dea212f39664/scratchpad/mode500/B.pt",
+ "n": 550,
+ "cont_nll_per_tok": 1.4770309048442087,
+ "greedy_verbatim_overlap": 0.6554891539840492,
+ "verbatim_frac_over_0.8": 0.28363636363636363,
+ "by_class": {
+  "cross-book": {
+   "n": 367,
+   "cont_nll": 1.794579091071911,
+   "overlap": 0.5979123545806897
+  },
+  "within-book": {
+   "n": 183,
+   "cont_nll": 0.8401992963984892,
+   "overlap": 0.7709573801099123
+  }
+ }
+}
