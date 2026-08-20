@@ -52,3 +52,5 @@ checkpoints/
 .DS_Store
 Thumbs.db
 desktop.ini
+*.gguf
+__pycache__/
