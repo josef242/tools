@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dataset Explorer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔦</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="layout">
+
+  <aside id="sidebar">
+    <h1>Dataset Explorer</h1>
+
+    <div class="side-section">
+      <div class="side-head">
+        <span>Library</span>
+        <button id="btn-show-load" class="mini">+ load</button>
+      </div>
+      <ul id="dataset-list"></ul>
+    </div>
+
+    <div class="side-section" id="load-form" style="display:none">
+      <div class="side-head"><span>Load dataset</span></div>
+      <input id="load-path" placeholder="/path/to/data.jsonl or dir" spellcheck="false">
+      <div id="browse-pane"></div>
+      <details id="load-adv"><summary>options</summary>
+        <label><input type="checkbox" id="load-raw"> raw token shards (--raw-shards)</label>
+        <label><input type="checkbox" id="load-quick"> quick mode</label>
+        <label><input type="checkbox" id="load-recursive" title="Walk subdirectories (HF-style nested shard layouts). Changes record numbering vs a top-level load of the same path."> include subdirectories</label>
+        <input id="load-field" placeholder="text field (--field, optional)" spellcheck="false">
+        <input id="load-tok-kind" placeholder="tok kind (npy: e.g. llama)" spellcheck="false">
+        <input id="load-tok-path" placeholder="tok path" spellcheck="false">
+        <input id="load-special" placeholder="special tokens json (optional)" spellcheck="false">
+      </details>
+      <button id="btn-load" class="primary">Load</button>
+    </div>
+
+    <div class="side-section">
+      <div class="side-head"><span>Result sets</span></div>
+      <ul id="set-list"></ul>
+    </div>
+
+    <div class="side-section" id="tokenized-section" style="display:none">
+      <div class="side-head"><span>Tokenized</span></div>
+      <ul id="tokenized-list"></ul>
+    </div>
+  </aside>
+
+  <main id="main">
+    <nav id="tabs">
+      <button data-tab="library" class="tab active">Library</button>
+      <button data-tab="filters" class="tab">Filters</button>
+      <button data-tab="transforms" class="tab">Transforms</button>
+      <button data-tab="browse" class="tab">Browse</button>
+      <button data-tab="search" class="tab">Search</button>
+      <button data-tab="sets" class="tab">Sets</button>
+      <button data-tab="export" class="tab">Export</button>
+      <button data-tab="tokenize" class="tab">Tokenize</button>
+      <button data-tab="dedup" class="tab">Dedup</button>
+      <button data-tab="info" class="tab">Info</button>
+      <button data-tab="jobs" class="tab">Jobs <span id="jobs-badge"></span></button>
+    </nav>
+
+    <!-- Library -->
+    <section id="tab-library" class="tabpane active">
+      <div class="toolbar">
+        <span id="registry-info" class="dim"></span>
+        <button id="btn-show-register" class="mini">+ register dataset</button>
+      </div>
+      <table id="library-table" class="data-table">
+        <thead><tr><th>Name</th><th>Kind</th><th>Records</th><th>Tokens</th><th>Size</th>
+        <th>Tags</th><th>Lineage</th><th>Last opened</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="panel" id="library-tok-panel" style="display:none">
+        <h3>Tokenized datasets</h3>
+        <table id="library-table-tok" class="data-table">
+          <thead><tr><th>Name</th><th>Kind</th><th>Records</th><th>Tokens</th><th>Size</th>
+          <th>Tags</th><th>Lineage</th><th>Last opened</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="panel" id="register-form" style="display:none">
+        <h3 id="register-title">Register dataset</h3>
+        <div class="row">
+          <input id="reg-path" class="grow" placeholder="/path/to/dataset (file or dir)" spellcheck="false">
+          <button id="btn-scan" class="mini">scan dir for candidates</button>
+        </div>
+        <div id="scan-results"></div>
+        <div class="row">
+          <input id="reg-name" placeholder="name" size="26">
+          <input id="reg-tags" placeholder="tags (comma separated)" size="26">
+          <select id="reg-kind"><option value="">kind: auto</option>
+            <option value="text">text</option><option value="tokenized">tokenized</option></select>
+        </div>
+        <div class="row"><input id="reg-notes" class="grow" placeholder="notes" spellcheck="false"></div>
+        <details><summary class="dim">open options (remembered per dataset)</summary>
+          <div class="row">
+            <input id="reg-field" placeholder="text field" size="12">
+            <input id="reg-tok-kind" placeholder="tok kind" size="10">
+            <input id="reg-tok-path" placeholder="tok path" size="26">
+            <input id="reg-special" placeholder="special tokens json" size="20">
+            <label><input type="checkbox" id="reg-raw"> raw shards</label>
+            <label><input type="checkbox" id="reg-recursive"> subdirs</label>
+          </div>
+        </details>
+        <div class="row">
+          <button id="btn-register" class="primary">Save</button>
+          <button id="btn-register-cancel" class="mini">cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filters (library-level, like datasets: corpus-agnostic definitions) -->
+    <section id="tab-filters" class="tabpane">
+      <div class="panel" id="filters-panel">
+        <h3>Filters <span class="dim" style="font-weight:normal">— corpus-agnostic rule definitions; evaluate against any dataset</span></h3>
+        <table id="filters-table" class="data-table">
+          <thead><tr><th>Name</th><th>Rules</th><th>v</th><th>Notes</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="row" style="margin-top:6px"><button id="btn-new-filter" class="mini">+ new filter</button></div>
+        <div id="filter-editor" style="display:none; margin-top:8px">
+          <div class="row">
+            <input id="flt-name" placeholder="filter name" size="24">
+            <input id="flt-notes" class="grow" placeholder="notes" spellcheck="false">
+          </div>
+          <div id="flt-rules"></div>
+          <div class="row">
+            <button id="btn-flt-add-rule" class="mini">+ rule</button>
+            <button id="btn-flt-save" class="primary">Save filter</button>
+            <button id="btn-flt-cancel" class="mini">cancel</button>
+          </div>
+        </div>
+        <div id="filter-eval-controls" class="row" style="margin-top:8px; display:none">
+          <span id="filter-eval-label"></span>
+          <label>sample <input id="flt-sample" value="10000" size="7"></label>
+          <label title="full corpus scan; stores each rule's matches as a browsable set"><input type="checkbox" id="flt-materialize"> materialize sets (full scan)</label>
+          <button id="btn-flt-eval" class="primary">Evaluate on open dataset</button>
+        </div>
+        <div id="filter-eval-progress" class="progress-line"></div>
+        <div id="filter-eval-result"></div>
+      </div>
+      <div class="panel" id="filter-evals-panel" style="display:none">
+        <h3>Evaluations <span class="dim" style="font-weight:normal">— per-10k rates; one column per run, corpora side by side</span>
+          <button id="btn-flt-evals-clear" class="mini" style="float:right">clear history</button></h3>
+        <div id="filter-evals-box" style="overflow-x:auto"></div>
+      </div>
+    </section>
+
+    <!-- Transforms (the fourth noun: corpus-agnostic rewrite chains) -->
+    <section id="tab-transforms" class="tabpane">
+      <div class="panel" id="transforms-panel">
+        <h3>Transforms <span class="dim" style="font-weight:normal">— ordered rewrite chains; applied to survivors at any export pass (compose/export), source data never mutated</span></h3>
+        <table id="transforms-table" class="data-table">
+          <thead><tr><th>Name</th><th>Scrubs</th><th>v</th><th>Notes</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="row" style="margin-top:6px"><button id="btn-new-transform" class="mini">+ new transform</button></div>
+        <div id="transform-editor" style="display:none; margin-top:8px">
+          <div class="row">
+            <input id="tfm-name" placeholder="transform name" size="24">
+            <input id="tfm-notes" class="grow" placeholder="notes" spellcheck="false">
+            <label title="re-run the whole chain on each record until a full pass changes nothing (cap 10) — for chains whose rewrites expose patterns an EARLIER scrub would have caught. Part of the composition's identity."><input type="checkbox" id="tfm-fixpoint"> run to fixpoint</label>
+          </div>
+          <div id="tfm-scrubs"></div>
+          <div class="row">
+            <button id="btn-tfm-add-scrub" class="mini">+ scrub</button>
+            <button id="btn-tfm-help" class="mini">? pattern help</button>
+            <button id="btn-tfm-save" class="primary">Save transform</button>
+            <button id="btn-tfm-cancel" class="mini">cancel</button>
+          </div>
+          <div id="tfm-help" style="display:none; margin-top:8px">
+            <table class="data-table">
+              <thead><tr><th>Mode</th><th>Meaning</th><th>Example</th></tr></thead>
+              <tbody>
+                <tr><td><b>literal</b></td>
+                  <td>Exact substring. Paste anything — no special characters, no escaping. Replacement is also verbatim.</td>
+                  <td><code>(disambiguation)</code> matches those exact 16 characters, parens included.</td></tr>
+                <tr><td><b>glob (*)</b></td>
+                  <td>Exact substring, except <code>*</code> = the <i>shortest</i> stretch of anything <i>within one line</i>. Never crosses a newline. Multiple <code>*</code>s fine. Need a real asterisk? Use literal mode.</td>
+                  <td><code>Start of the match*end of the match</code><br>
+                      ✓ <span class="dim">"… Start of the match. Stuff in the middle. Finally, end of the match."</span><br>
+                      ✗ <span class="dim">"… Start of the match. The end of the line."</span> (second part missing on that line)<br>
+                      <span class="dim">A trailing <code>*</code> adds nothing — combine with <b>line</b> to take the rest of the line.
+                      Every non-<code>*</code> character is strict, spaces included: <code>A * B</code> demands literal spaces
+                      (so <code>A B</code> single-spaced fails — the two pattern spaces need two characters); use <code>A*B</code> for "whatever's between, including nothing".</span></td></tr>
+                <tr><td><b>regex</b></td>
+                  <td>Full Python regex. Replacement may use backrefs (<code>\1</code>). Patterns are stress-tested at save — pathological backtracking is rejected.</td>
+                  <td><code>\(\s*[;,]?\s*\)</code> matches empty parens like <code>( )</code>, <code>(; )</code>, <code>(,)</code>.</td></tr>
+                <tr><td><b>line</b> ☐</td>
+                  <td>Works with any mode: the match selects its <i>entire line</i>, newline included. Blank replacement = delete the line.</td>
+                  <td>glob <code>Category:*</code> + line ☑ deletes every line containing <code>Category:</code>.</td></tr>
+              </tbody>
+            </table>
+            <div class="dim" style="margin-top:4px">
+              All modes match <b>case-sensitively</b> unless the row's <b>aA</b> box is checked (regex can also inline <code>(?i)</code>).
+              The <b>\n</b> box makes literal/glob interpret <code>\n</code> <code>\t</code> <code>\\</code> in pattern and replacement (e.g. literal <code>&gt;&gt;&gt;&gt;&gt;\n</code> = those characters followed immediately by a newline); off = every character verbatim.
+              Scrubs run in list order on surviving records only; order matters (a rewrite can expose patterns for LATER scrubs —
+              put cleanup scrubs last, or enable "run to fixpoint" for chains that feed earlier rules).
+              Blank replacement always means "delete the match". Preview before composing — the diffs are the ground truth.
+            </div>
+          </div>
+        </div>
+        <div id="transform-preview-controls" class="row" style="margin-top:8px; display:none">
+          <span id="transform-preview-label"></span>
+          <label>sample <input id="tfm-sample" value="10000" size="7"></label>
+          <select id="tfm-filter-ctx" title="preview on this filter's SURVIVORS (drops applied first) — pick the filter you'll compose with"><option value="">all records</option></select>
+          <button id="btn-tfm-preview" class="primary">Preview on open dataset</button>
+        </div>
+        <div id="transform-preview-progress" class="progress-line"></div>
+        <div id="transform-preview-result"></div>
+      </div>
+      <div class="panel" id="transform-evals-panel" style="display:none">
+        <h3>Previews <span class="dim" style="font-weight:normal">— per-10k hit rates; one column per recorded run, corpora side by side</span></h3>
+        <div id="transform-evals-box" style="overflow-x:auto"></div>
+      </div>
+    </section>
+
+    <!-- Browse -->
+    <section id="tab-browse" class="tabpane">
+      <div class="toolbar">
+        <select id="browse-set"></select>
+        <button id="browse-prev" class="mini">‹ prev</button>
+        <span id="browse-pageinfo" class="dim"></span>
+        <button id="browse-next" class="mini">next ›</button>
+        <input id="browse-goto" placeholder="goto #" size="8">
+        <label class="dim"><input type="checkbox" id="browse-full"> full text</label>
+      </div>
+      <div id="browse-split">
+        <div id="browse-list"></div>
+        <div id="record-view"><div class="dim pad">Select a record</div></div>
+      </div>
+    </section>
+
+    <!-- Search -->
+    <section id="tab-search" class="tabpane">
+      <form id="search-form" class="stack">
+        <div class="row">
+          <select id="search-mode">
+            <option value="text">text (findall)</option>
+            <option value="meta">metadata query</option>
+          </select>
+          <input id="search-query" placeholder="query — text term, or metadata expr like 'words' &lt; 100" spellcheck="false" class="grow">
+        </div>
+        <div class="row" id="search-text-opts">
+          <input id="search-field" placeholder="field (optional)" size="14">
+          <label><input type="checkbox" id="search-regex"> regex</label>
+          <label><input type="checkbox" id="search-multi"> AND-match terms (split on |)</label>
+        </div>
+        <div class="row">
+          <input id="search-limit" placeholder="limit (blank = full scan)" size="18">
+          <input id="search-name" placeholder="save as set name (optional)" size="24">
+          <select id="search-within"><option value="">whole dataset</option></select>
+          <button class="primary" type="submit">Search</button>
+        </div>
+      </form>
+      <div id="search-progress" class="progress-line"></div>
+      <div id="search-status" class="log-pane"></div>
+    </section>
+
+    <!-- Sets -->
+    <section id="tab-sets" class="tabpane">
+      <table id="sets-table" class="data-table">
+        <thead><tr><th>Name</th><th>Records</th><th>%</th><th>Kind</th><th>Query</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="panel">
+        <h3>Combine sets</h3>
+        <div class="row">
+          <select id="op-kind">
+            <option value="union">union</option>
+            <option value="intersect">intersect</option>
+            <option value="subtract">subtract</option>
+          </select>
+          <select id="op-a"></select>
+          <select id="op-b"></select>
+          <input id="op-name" placeholder="new set name (optional)" size="22">
+          <button id="btn-op" class="primary">Create</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Export -->
+    <section id="tab-export" class="tabpane">
+      <div class="panel">
+        <h3>Recipe</h3>
+        <div class="row">
+          <div>
+            <div class="dim">include (union; none selected = all records)</div>
+            <select id="export-include" multiple size="5"></select>
+          </div>
+          <div>
+            <div class="dim">exclude</div>
+            <select id="export-exclude" multiple size="5"></select>
+          </div>
+          <div class="grow">
+            <div class="dim" title="ordered rewrite chain applied while writing — records are rewritten in the OUTPUT only; source untouched">transform (rewrites while writing)</div>
+            <select id="export-transform"><option value="">no transform</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Plan</h3>
+        <div id="export-plan-summary" class="dim">Select a dataset to plan an export.</div>
+        <div id="export-plan-files" style="max-height: 32vh; overflow-y: auto; margin-top: 8px"></div>
+      </div>
+      <div class="panel">
+        <h3>Output</h3>
+        <div class="row">
+          <label><input type="radio" name="export-mode" value="single" checked> single JSONL file</label>
+          <label><input type="radio" name="export-mode" value="shards" id="export-mode-shards"> mirror source shards (one file per shard)</label>
+          <label><input type="radio" name="export-mode" value="split"> split to size:</label>
+          <input id="export-split-mb" value="300" size="5"> <span class="dim">MB</span>
+          <span id="export-split-est" class="dim"></span>
+        </div>
+        <div class="row">
+          <input id="export-path" placeholder="/output/path.jsonl  (or a directory for shard mode)" class="grow" spellcheck="false">
+        </div>
+        <div class="row">
+          <input id="export-register" placeholder="register result in library as… (optional)" size="36">
+          <button id="btn-export" class="primary">Export</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tokenize -->
+    <section id="tab-tokenize" class="tabpane">
+      <div id="tok-source" class="dim">Open a dataset to tokenize it.</div>
+      <div class="panel" id="tok-versions-panel" style="display:none">
+        <h3>Tokenized versions of this dataset</h3>
+        <table id="tok-versions" class="data-table">
+          <thead><tr><th>Name</th><th>Tokenizer</th><th>Label</th><th>Tokens</th>
+          <th>Shards</th><th>Created</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h3>Extraction</h3>
+        <div class="row">
+          <select id="tok-field"></select>
+          <span class="dim">or template:</span>
+          <input id="tok-template" class="grow" placeholder='e.g. {title}&#10;&#10;{text} — dotted paths like {meta.subreddit} work' spellcheck="false">
+          <button id="btn-tok-preview" class="mini">preview</button>
+        </div>
+        <pre id="tok-preview" class="log-pane" style="display:none"></pre>
+      </div>
+      <div class="panel">
+        <h3>Tokenizer</h3>
+        <div class="row">
+          <select id="tok-kind">
+            <option value="">choose tokenizer…</option>
+            <option value="llama">llama</option><option value="hf">hf</option>
+            <option value="tiktoken">tiktoken</option><option value="claude">claude</option>
+          </select>
+          <input id="tok-path" class="grow" placeholder="tokenizer path / HF id (as required by kind)" spellcheck="false">
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Sharding</h3>
+        <div class="row">
+          <label>shard size <input id="tok-shard-size" value="100000000" size="11"></label>
+          <label>val holdout <input id="tok-val-holdout" value="50000000" size="10"></label>
+          <label title="forces gcd(train shard count, this)=1 — kills dataloader orbit-sharing; 6 covers world sizes 2^a·3^b">coprime <input id="tok-coprime" value="6" size="3"></label>
+          <label>min shard <input id="tok-min-shard" value="5000000" size="9"></label>
+          <label title="names the shards, the resume manifest, and the token_cache group">label <input id="tok-label" value="data" size="10"></label>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Format &amp; filters</h3>
+        <div class="row">
+          <select id="tok-format">
+            <option value="auto">format: auto</option>
+            <option value="jsonl">jsonl</option><option value="json">json</option>
+            <option value="parquet">parquet</option>
+            <option value="scanned-book-jsonl">scanned-book-jsonl</option>
+            <option value="batch">batch (Scriptorium manifest)</option>
+          </select>
+          <label><input type="checkbox" id="tok-filter-english"> English filter</label>
+          <span id="tok-lang-opts" style="display:none">
+            <label>threshold <input id="tok-lang-threshold" value="0.8" size="4"></label>
+            <select id="tok-lang-backend"><option>auto</option><option>fasttext</option>
+              <option>langdetect</option><option>langid</option></select>
+          </span>
+        </div>
+        <div class="row" id="tok-sb-opts" style="display:none">
+          <span class="dim">page filters:</span>
+          <label>max non-dict <input id="tok-sb-nondict" value="0.50" size="4"></label>
+          <label>min alpha <input id="tok-sb-alpha" value="0.60" size="4"></label>
+          <label>min chars <input id="tok-sb-chars" value="150" size="5"></label>
+          <label>max repetition <input id="tok-sb-rep" value="0.05" size="4"></label>
+          <label><input type="checkbox" id="tok-sb-matter"> include front/back matter</label>
+        </div>
+        <details><summary class="dim">advanced</summary>
+          <div class="row">
+            <label>workers <input id="tok-workers" placeholder="auto" size="5"></label>
+            <select id="tok-dtype"><option value="auto">dtype: auto</option>
+              <option value="uint16">uint16</option><option value="uint32">uint32</option></select>
+            <label><input type="checkbox" id="tok-legacy"> legacy river shards</label>
+            <input id="tok-extra" class="grow" placeholder="extra pre_tokenize.py args (escape hatch)" spellcheck="false">
+          </div>
+        </details>
+      </div>
+      <div class="panel">
+        <h3>Composition <span class="dim">— tokenize a filtered / set-scoped view of this dataset</span></h3>
+        <div class="row">
+          <div>
+            <div class="dim">include sets (union; none = all records)</div>
+            <select id="tok-include" multiple size="4"></select>
+          </div>
+          <div>
+            <div class="dim">exclude sets</div>
+            <select id="tok-exclude" multiple size="4"></select>
+          </div>
+          <div>
+            <div class="dim" title="records matching ANY rule are dropped; the filter's sets are materialized first (full scan) so the drops stay browsable">filter (drops matches of any rule)</div>
+            <select id="tok-filter"><option value="">no filter</option></select>
+            <div id="tok-filter-note" class="dim"></div>
+          </div>
+          <div class="grow">
+            <div class="dim" title="ordered rewrite chain applied to surviving records — in-stream (stream mode) or while writing the intermediate (file mode)">transform (rewrites survivors)</div>
+            <select id="tok-transform"><option value="">no transform</option></select>
+            <div id="tok-transform-note" class="dim"></div>
+          </div>
+        </div>
+        <div class="row" id="tok-int-row" style="display:none">
+          <span class="dim">intermediate:</span>
+          <select id="tok-int-mode">
+            <option value="stream" title="pre_tokenize reads the SOURCE through a tiny view manifest (file list + skip ordinals) — no byte copy, excluded records dropped in-stream">stream (no copy)</option>
+            <option value="file" title="the composed records are written to a plain JSONL first and THAT file is tokenized — inspectable, registered with lineage">materialize JSONL</option>
+          </select>
+          <input id="tok-int-path" class="grow" spellcheck="false">
+          <input id="tok-int-register" placeholder="register as…" size="26">
+          <label id="tok-int-keep-label" title="uncheck to delete the intermediate file after a successful tokenize (lineage then points at the source dataset)"><input type="checkbox" id="tok-int-keep" checked> keep</label>
+        </div>
+        <div id="tok-compose-plan" class="dim"></div>
+      </div>
+      <div class="panel">
+        <h3>Output</h3>
+        <div class="row">
+          <input id="tok-out" class="grow" placeholder="/output/shard/dir" spellcheck="false">
+          <input id="tok-register" placeholder="register result as…" size="30">
+        </div>
+        <div class="row">
+          <button id="btn-tok-preflight" class="primary">Run preflight</button>
+          <button id="btn-tok-start">Start tokenization</button>
+        </div>
+        <div id="tok-preflight-report"></div>
+      </div>
+    </section>
+
+    <!-- Dedup -->
+    <section id="tab-dedup" class="tabpane">
+      <div class="panel">
+        <h3>Near-duplicate detection</h3>
+        <div class="row">
+          <label>threshold <input id="nd-threshold" value="0.8" size="5"></label>
+          <label>ngram <input id="nd-ngram" value="13" size="4"></label>
+          <label>perms <input id="nd-perms" value="1024" size="6"></label>
+          <label>min tokens <input id="nd-min-tokens" value="0" size="6"></label>
+          <input id="nd-name" placeholder="save sets as (optional)" size="20">
+          <label><input type="checkbox" id="nd-cpu"> CPU</label>
+          <label><input type="checkbox" id="nd-all-gpus" title="Shard the matching phase across every visible GPU (sketching stays single-GPU: it is document-feed-bound)"> all GPUs</label>
+          <label><input type="checkbox" id="nd-rebuild"> re-sketch</label>
+          <button id="btn-neardupe" class="primary">Run</button>
+        </div>
+      </div>
+      <table id="clusters-table" class="data-table">
+        <thead><tr><th>#</th><th>Size</th><th>Max J</th><th>Mean J</th><th>Members</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="panel">
+        <h3>Prune (writes a deduplicated copy)</h3>
+        <div class="row">
+          <input id="prune-out" placeholder="/output/dir" class="grow" spellcheck="false">
+          <select id="prune-keep"><option value="longest">keep longest</option><option value="first">keep first</option></select>
+          <label><input type="checkbox" id="prune-write"> commit (unchecked = dry run)</label>
+          <button id="btn-prune" class="primary">Prune</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Info -->
+    <section id="tab-info" class="tabpane">
+      <div id="info-content" class="pad dim">No dataset selected</div>
+      <div class="panel" id="info-registry" style="display:none">
+        <h3>Library entry</h3>
+        <div id="info-registry-body"></div>
+        <div class="row" id="info-registry-actions" style="margin-top:6px"></div>
+        <div id="info-edit" style="display:none; margin-top:8px">
+          <div class="row">
+            <input id="ie-name" placeholder="name" size="26">
+            <input id="ie-tags" placeholder="tags (comma separated)" size="26">
+            <select id="ie-kind"><option value="">kind</option>
+              <option value="text">text</option><option value="tokenized">tokenized</option></select>
+          </div>
+          <div class="row"><input id="ie-notes" class="grow" placeholder="notes" spellcheck="false"></div>
+          <div class="row">
+            <input id="ie-field" placeholder="text field" size="12">
+            <input id="ie-tok-kind" placeholder="tok kind" size="10">
+            <input id="ie-tok-path" placeholder="tok path" size="22">
+            <label><input type="checkbox" id="ie-raw"> raw shards</label>
+            <label><input type="checkbox" id="ie-recursive"> subdirs</label>
+            <button id="btn-ie-save" class="primary">Save</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Field statistics <span class="dim" style="font-weight:normal">— top-level columns; nested metadata (meta.*) lives in the Metadata index below</span></h3>
+        <div class="row">
+          <select id="stats-field"></select>
+          <button id="btn-stats" class="primary">Compute</button>
+        </div>
+        <pre id="stats-out" class="log-pane"></pre>
+      </div>
+      <div class="panel">
+        <h3>Metadata index</h3>
+        <div class="row">
+          <button id="btn-meta-fields" class="mini">field summary</button>
+          <button id="btn-meta-rebuild" class="mini" title="Rebuild the metadata index from scratch — streams every record (one full corpus pass). Use when the field list is missing fields the schema shows.">rebuild index</button>
+          <input id="meta-values-field" placeholder="field (e.g. meta.language)" size="22">
+          <button id="btn-meta-values" class="mini">top values</button>
+        </div>
+        <pre id="meta-out" class="log-pane"></pre>
+      </div>
+    </section>
+
+    <!-- Jobs -->
+    <section id="tab-jobs" class="tabpane">
+      <div id="job-progress" class="progress-line"></div>
+      <div id="jobs-split">
+        <table id="jobs-table" class="data-table">
+          <thead><tr><th>Job</th><th>Kind</th><th>Dataset</th><th>Status</th><th>Time</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <pre id="job-log" class="log-pane grow">Select a job to view its log</pre>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="conflict-modal" style="display:none">
+  <div id="conflict-box">
+    <h3>Cache conflicts need your call</h3>
+    <p class="dim">This dataset's cache directory holds artifacts from more than one
+    generation, and the tool can't tell which is current. Pick which to keep for each —
+    the others are sidelined (renamed <code>.superseded</code>), never deleted.</p>
+    <div id="conflict-list"></div>
+    <div class="row">
+      <button id="btn-conflicts-apply" class="primary">Apply choices &amp; retry load</button>
+      <button id="btn-conflicts-cancel" class="mini">cancel</button>
+    </div>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
