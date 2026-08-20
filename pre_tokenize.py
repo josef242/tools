@@ -394,6 +394,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tokenizer", choices=["llama","hf","tiktoken","claude"], default="tiktoken")
     p.add_argument("--tokenizer_path", help="Path/ID for HF tokenizers")
     p.add_argument("--workers", type=int, default=max(mp.cpu_count()//2,1),help="Tokenisation worker processes")
+    p.add_argument("--view-manifest",
+                   help="Tokenize a COMPOSED view of the source (dataset-explorer "
+                        "<label>.view.json): the manifest's file list is used verbatim "
+                        "(no glob) and per-file record ordinals in its skip arrays are "
+                        "dropped in-stream -- no intermediate copy. Each file's raw "
+                        "record count is verified at EOF (source drift is fatal), and "
+                        "an output dir started with a different composition refuses "
+                        "to resume.")
 
     # Language filtering arguments
     lang_group = p.add_argument_group("Language filtering")
@@ -672,6 +680,139 @@ def append_to_manifest(manifest_path, filepath, token_count):
         fh.write(f"{filepath}\t{token_count}\n")
 
 # ---------------------------------------------------------------------------
+# 7b.  View manifests (dataset-explorer composed views)
+# ---------------------------------------------------------------------------
+
+def load_view_manifest(path):
+    """Load a dataset-explorer view manifest: a pointer-tier description of a
+    composed dataset -- the authoritative source file list plus per-file
+    ordinals of records to SKIP (sorted int arrays in a sibling .npz).
+    Attaches '_skips'/'_expected' lookups (normalized path -> array / raw
+    record count) and '_hash', a content hash over (files, counts, skip
+    arrays) -- deliberately not over the manifest bytes, so a regenerated
+    manifest with the identical composition still resumes."""
+    with open(path, "r", encoding="utf-8") as fh:
+        v = json.load(fh)
+    npz = None
+    if v.get("skips"):
+        npz_path = os.path.join(os.path.dirname(os.path.abspath(path)), v["skips"])
+        npz = np.load(npz_path)
+    h = hashlib.sha256()
+    v["_skips"], v["_expected"] = {}, {}
+    for i, e in enumerate(v["files"]):
+        key = normalize_path(e["path"])
+        name = f"skip_{i:05d}"
+        arr = (np.asarray(npz[name], dtype=np.int64)
+               if npz is not None and name in npz.files
+               else np.empty(0, dtype=np.int64))
+        v["_skips"][key] = arr
+        v["_expected"][key] = int(e["records"])
+        h.update(key.encode()); h.update(str(e["records"]).encode())
+        h.update(arr.tobytes())
+    # Scrubs: ordered regex rewrites applied in-stream to KEPT records.
+    # They are part of the composition's identity, so they join the hash --
+    # editing a scrub and resuming into the same output dir must refuse.
+    scrubs = []
+    for s in (v.get("scrubs") or []):
+        try:
+            pat = re.compile(s["pattern"])
+        except re.error as e:
+            _die(f"[view] scrub {s.get('name')!r}: bad regex: {e}")
+        scrubs.append((s["name"], s["field"], pat, s.get("replacement", "")))
+    v["_scrubs"] = scrubs
+    v["_scrub_fixpoint"] = bool(v.get("scrub_fixpoint"))
+    h.update(json.dumps(v.get("scrubs") or [], sort_keys=True,
+                        ensure_ascii=False).encode())
+    if v["_scrub_fixpoint"]:
+        # Only hashed when ON so pre-fixpoint manifests keep their old hash
+        # (a False flag must not invalidate existing resume stamps).
+        h.update(b"scrub_fixpoint")
+    v["_hash"] = h.hexdigest()
+    return v
+
+
+def check_view_stamp(manifest_path, view, resuming: bool):
+    """Resume guard: a view run stamps its composition hash next to the resume
+    manifest. Resuming with a different (or no) view would silently mix two
+    compositions in one shard set -- refuse instead."""
+    stamp_path = manifest_path + ".view"
+    stamp = None
+    if os.path.exists(stamp_path):
+        with open(stamp_path, "r", encoding="utf-8") as fh:
+            stamp = fh.read().strip()
+    if view is None:
+        if stamp is not None:
+            _die(f"Output dir was started with --view-manifest ({stamp_path} exists) "
+                 f"but this run has none -- resuming would mix compositions.")
+        return
+    if stamp is not None:
+        if stamp != view["_hash"]:
+            _die("--view-manifest composition differs from the one this output dir "
+                 "was started with -- resuming would mix compositions. Use a fresh "
+                 "output dir, or delete the manifest + .view stamp to start over.")
+    elif resuming:
+        _die(f"Output dir has an existing {os.path.basename(manifest_path)} from a "
+             f"non-view run -- refusing to resume it with --view-manifest.")
+    else:
+        os.makedirs(os.path.dirname(stamp_path) or ".", exist_ok=True)
+        with open(stamp_path, "w", encoding="utf-8") as fh:
+            fh.write(view["_hash"] + "\n")
+
+
+SCRUB_MAX_PASSES = 10       # fixpoint cap (mirrors the explorer web layer)
+
+
+def _apply_view(iterator, skip, expected, path, scrubs=(), scrub_counts=None,
+                fixpoint=False, nonconverged=None):
+    """Stream `iterator`, dropping records whose ordinal is in sorted `skip`,
+    then applying the view's scrubs (ordered regex rewrites) to survivors --
+    once, or to fixpoint (chain repeated until a pass changes nothing, capped)
+    when the manifest asks for it. Verifies the raw record count at EOF: a
+    mismatch means the source changed since the view was cut, every ordinal
+    after the drift point is suspect, and the file must NOT be marked done --
+    so it's fatal."""
+    si, sn = 0, len(skip)
+    n = 0
+    for rec in iterator:
+        ordinal = n
+        n += 1
+        if si < sn and skip[si] == ordinal:
+            si += 1
+            continue
+        if scrubs:
+            hit_names = set()
+            passes = 0
+            while True:
+                passes += 1
+                pass_changed = False
+                for name, field, pat, repl in scrubs:
+                    v = rec.get(field)
+                    if not isinstance(v, str):
+                        continue
+                    new, hits = pat.subn(repl, v)
+                    if hits:
+                        rec[field] = new
+                        pass_changed = True
+                        if scrub_counts is not None:
+                            c = scrub_counts.setdefault(name, [0, 0, 0])
+                            if name not in hit_names:
+                                c[0] += 1
+                            c[1] += hits
+                            c[2] += len(v) - len(new)
+                        hit_names.add(name)
+                if not pass_changed or not fixpoint:
+                    break
+                if passes >= SCRUB_MAX_PASSES:
+                    if nonconverged is not None:
+                        nonconverged[0] += 1
+                    break
+        yield rec
+    if n != expected:
+        raise RuntimeError(
+            f"[view] {path}: raw record count {n:,} != view manifest's {expected:,} "
+            f"-- source changed since the view was cut; aborting")
+
+# ---------------------------------------------------------------------------
 # 8.  Main
 # ---------------------------------------------------------------------------
 def main() -> None:
@@ -777,10 +918,39 @@ def main() -> None:
             for pat in patterns:
                 files += glob.glob(os.path.join(args.input_dir, pat), recursive=True)
 
+    # ── composed view (dataset-explorer bridge) ──────────────────────────
+    view = None
+    if args.view_manifest:
+        if args.input_format in ("scanned-book-jsonl", "batch"):
+            _die("--view-manifest cannot be combined with scanned-book-jsonl/batch "
+                 "input (those iterators renumber records, so the view's ordinals "
+                 "would not correspond)")
+        view = load_view_manifest(args.view_manifest)
+        # The manifest's file list is AUTHORITATIVE: skip ordinals were computed
+        # against exactly these files, and a glob here could disagree (e.g.
+        # .json sidecars in mixed dirs) and silently misalign every set index.
+        files = [e["path"] for e in view["files"]]
+        missing = [f for f in files if not os.path.isfile(f)]
+        if missing:
+            _die(f"[view] {len(missing)} of {len(files)} file(s) in the view "
+                 f"manifest missing on disk, e.g. {missing[0]}")
+        print(f"[view] {os.path.basename(args.view_manifest)}: {len(files)} file(s); "
+              f"skipping {view.get('dropped', 0):,} of "
+              f"{view.get('kept', 0) + view.get('dropped', 0):,} records in-stream"
+              + (f"; {len(view['_scrubs'])} scrub(s)" if view["_scrubs"] else ""))
+    view_scrub_counts: dict = {}
+    view_nonconverged = [0]
+    check_view_stamp(MANIFEST, view, resuming=bool(processed_files))
+
     if not files:
         _die("No input files found")
 
     print(f"Found {len(files)} file(s); spawning {args.workers} workers…")
+    # The writer's resume scan validates every pre-existing shard in the output
+    # dir before anything else happens -- minutes on a large tree over a network
+    # mount, and previously totally silent.
+    print("[writer] checking existing shards in output dir "
+          "(can take a while on network storage)…", flush=True)
     t0          = time.time()
     if args.legacy_river:
         shard = ShardWriter(args.output_dir, args.label, args.shard_size, dtype)
@@ -858,6 +1028,15 @@ def main() -> None:
                         iterator = iter_json_lines(path)
                     else:
                         iterator = iter_json_array(path)
+
+                if view is not None:
+                    key = normalize_path(path)
+                    iterator = _apply_view(iterator, view["_skips"][key],
+                                           view["_expected"][key], path,
+                                           scrubs=view["_scrubs"],
+                                           scrub_counts=view_scrub_counts,
+                                           fixpoint=view["_scrub_fixpoint"],
+                                           nonconverged=view_nonconverged)
 
                 rows_seen = 0
                 for rec in iterator:
@@ -954,6 +1133,16 @@ def main() -> None:
                 print(f"[final drain] {tokens:,} tokens, {token_total:,} total",
                       flush=True)
             shard.close()           # normal exit, no Ctrl-C
+            # Exact per-scrub totals for the ledger; the explorer web layer
+            # parses these lines into the composed-job result.
+            if view is not None and view["_scrubs"]:
+                for sname, _sf, _sp, _sr in view["_scrubs"]:
+                    c = view_scrub_counts.get(sname, [0, 0, 0])
+                    print(f"[scrub] {sname}: docs={c[0]:,} subs={c[1]:,} "
+                          f"chars_removed={c[2]:,}", flush=True)
+                if view["_scrub_fixpoint"]:
+                    print(f"[scrub] fixpoint nonconverged={view_nonconverged[0]:,}",
+                          flush=True)
 
         finally:
             pass
@@ -1046,7 +1235,10 @@ def main() -> None:
     dt = time.time() - t0
     tokens_this_run = token_total - previous_tokens
     print("=" * 60)
-    print(f"Done. {token_total:,} total tokens → {args.output_dir}")
+    # '->' not '→': a Windows cp1252 stdout pipe cannot encode the arrow,
+    # and this line once crashed the process AFTER 21.9B tokens of successful
+    # work -- the most expensive character in the codebase's history.
+    print(f"Done. {token_total:,} total tokens -> {args.output_dir}")
     print(f"  Previous runs: {previous_tokens:,} tokens")
     print(f"  This run: {tokens_this_run:,} tokens in {timedelta(seconds=int(dt))}")
     print(f"  ({tokens_this_run / dt:,.1f} tok/s) "
