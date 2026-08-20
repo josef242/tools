@@ -339,6 +339,138 @@ class ChatTemplateBuilder:
         return format_name in ['llama-2', 'llama-3', 'chatml', 'mara']
 
 
+class ThinkStreamFilter:
+    """Streaming filter for reasoning models that emit <think>...</think> blocks.
+
+    display='full'    -> stream everything verbatim (tags included)
+    display='compact' -> replace the think block with a "[Thinking...]" placeholder
+
+    Tags may arrive split across stream chunks, so unresolved tag prefixes are
+    held back until the next chunk decides them. Regardless of display mode,
+    stripped() returns the response without the think block — reasoning must not
+    be fed back into history (matches the chat template, which drops reasoning
+    from prior turns).
+    """
+    OPEN, CLOSE = '<think>', '</think>'
+
+    def __init__(self, display: str = 'compact', assume_open: bool = False):
+        # assume_open: the chat template pre-filled <think> in the prompt, so the
+        # stream begins inside the think block and only the closing tag appears.
+        self.display = display
+        self.raw = ''
+        self._buf = ''
+        self._in_think = assume_open
+        self._announce = assume_open  # pending "[Thinking...]" placeholder
+        self._skip_ws = False  # swallow the "\n\n" the model emits after </think>
+        self._tcount = 0   # ~tokens in the current think block (one per stream chunk)
+        self._tail = ''    # currently-displayed "<count>]" suffix, rewritten via \b
+
+    def feed(self, chunk: str) -> str:
+        """Consume a stream chunk, return the text that should be displayed."""
+        self.raw += chunk
+        if self.display == 'full':
+            self._announce = False
+            return chunk
+        self._buf += chunk
+        out = []
+        if self._announce:
+            out.append(self._start_think())
+            self._announce = False
+        while True:
+            if self._in_think:
+                idx = self._buf.find(self.CLOSE)
+                if idx >= 0:
+                    out.append('\n')
+                    self._skip_ws = True
+                    self._buf = self._buf[idx + len(self.CLOSE):]
+                    self._in_think = False
+                    continue
+                self._buf = self._held_prefix(self.CLOSE)
+                out.append(self._tick())
+                return ''.join(out)
+            # Normal mode: watch for an opening tag, and defensively for an
+            # orphan closing tag (template pre-filled <think> in the prompt)
+            i_open = self._buf.find(self.OPEN)
+            i_close = self._buf.find(self.CLOSE)
+            if i_open >= 0 and (i_close < 0 or i_open < i_close):
+                out.append(self._emit(self._buf[:i_open]))
+                out.append(self._start_think())
+                self._buf = self._buf[i_open + len(self.OPEN):]
+                self._in_think = True
+                continue
+            if i_close >= 0:
+                out.append(self._emit(self._buf[:i_close]))
+                out.append('\n')
+                self._skip_ws = True
+                self._buf = self._buf[i_close + len(self.CLOSE):]
+                continue
+            held = max(self._held_prefix(self.OPEN), self._held_prefix(self.CLOSE), key=len)
+            out.append(self._emit(self._buf[:len(self._buf) - len(held)]))
+            self._buf = held
+            return ''.join(out)
+
+    def flush(self) -> str:
+        """End of stream: release any held-back text."""
+        if self.display == 'full' or self._in_think:
+            self._buf = ''
+            return ''
+        out = self._emit(self._buf)
+        self._buf = ''
+        return out
+
+    def _start_think(self) -> str:
+        self._tcount = 0
+        self._tail = ']'
+        return '[Thinking...]'
+
+    def _tick(self) -> str:
+        """Advance the live token counter, rewriting the on-screen count via \\b.
+
+        Safe because think content is suppressed, so nothing else reaches the
+        terminal mid-block; the formatted count never shrinks, so overwriting
+        leaves no residue.
+        """
+        self._tcount += 1
+        new_tail = self._fmt_count(self._tcount) + ']'
+        rewrite = '\b' * len(self._tail) + new_tail
+        self._tail = new_tail
+        return rewrite
+
+    @staticmethod
+    def _fmt_count(n: int) -> str:
+        return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+    def _emit(self, text: str) -> str:
+        if self._skip_ws and text:
+            text = text.lstrip()
+            if text:
+                self._skip_ws = False
+        return text
+
+    def _held_prefix(self, tag: str) -> str:
+        """Longest suffix of the buffer that could still grow into `tag`."""
+        for k in range(min(len(tag) - 1, len(self._buf)), 0, -1):
+            if tag.startswith(self._buf[-k:]):
+                return self._buf[-k:]
+        return ''
+
+    def stripped(self) -> str:
+        """Full response with the think block removed (for chat history)."""
+        return self.strip_think(self.raw)
+
+    @staticmethod
+    def strip_think(text: str) -> str:
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # Orphan closing tag: the template pre-filled <think> in the prompt, so
+        # everything up to the close tag is reasoning
+        if '</think>' in text:
+            text = text.split('</think>', 1)[1]
+        # Unclosed block (generation hit the token limit mid-think)
+        if '<think>' in text:
+            text = text.split('<think>')[0]
+        return text.lstrip()
+
+
 prompt_session = PromptSession()
 
 # ============================================================================
@@ -550,14 +682,15 @@ class CustomModelWrapper(ModelWrapper):
 
 class GGUFModelWrapper(ModelWrapper):
     """Wrapper for GGUF models via llama_cpp"""
-    def __init__(self, model_path: str, n_gpu_layers: int = -1, n_ctx: int = None, 
+    def __init__(self, model_path: str, n_gpu_layers: int = -1, n_ctx: int = None,
                  chat_format: str = None, tensor_split: Optional[List[float]] = None,
-                 use_chat_completion: bool = False):
+                 use_chat_completion: bool = False, think_display: str = 'compact'):
         if not HAS_LLAMA_CPP:
             raise ImportError("llama_cpp is required for GGUF models")
-        
+
         log(f"Loading GGUF model: {model_path}")
         self.use_chat_completion = use_chat_completion
+        self.think_display = think_display
         # Messages now passed directly from session
         
         if tensor_split == 'auto':
@@ -619,16 +752,20 @@ class GGUFModelWrapper(ModelWrapper):
                 
                 if stream_output:
                     # Stream tokens for continuation
-                    response = ""
+                    filt = ThinkStreamFilter(self.think_display)
                     for chunk in output:
                         if 'choices' in chunk:
                             content = chunk['choices'][0].get('text', '')
                             if content:
-                                print(content, end='', flush=True)
-                                response += content
-                    return response
+                                visible = filt.feed(content)
+                                if visible:
+                                    print(visible, end='', flush=True)
+                    tail = filt.flush()
+                    if tail:
+                        print(tail, end='', flush=True)
+                    return filt.stripped()
                 else:
-                    return output['choices'][0]['text']
+                    return ThinkStreamFilter.strip_think(output['choices'][0]['text'])
             else:
                 # Normal chat completion mode
                 output = self.model.create_chat_completion(
@@ -642,17 +779,23 @@ class GGUFModelWrapper(ModelWrapper):
                 
                 if stream_output:
                     # Stream and print tokens as they arrive
-                    response = ""
+                    filt = ThinkStreamFilter(self.think_display)
                     for chunk in output:
                         delta = chunk['choices'][0]['delta']
                         if 'content' in delta:
                             content = delta['content']
-                            print(content, end='', flush=True)
-                            response += content
-                    return response
+                            if content:
+                                visible = filt.feed(content)
+                                if visible:
+                                    print(visible, end='', flush=True)
+                    tail = filt.flush()
+                    if tail:
+                        print(tail, end='', flush=True)
+                    return filt.stripped()
                 else:
                     # Non-streaming mode
-                    return output['choices'][0]['message']['content']
+                    return ThinkStreamFilter.strip_think(
+                        output['choices'][0]['message']['content'])
         else:
             # Raw completion mode - keep as is for now
             # Could add streaming here too if desired
@@ -887,6 +1030,8 @@ class ChatSession:
             else:
                 # GGUF chat completion continuation
                 response = self.model_wrapper.generate(
+                    messages=self.messages,
+                    continue_mode=True,
                     max_new_tokens=self.config["max_new_tokens"],
                     temperature=self.config["temperature"],
                     top_p=self.config["top_p"],
@@ -944,6 +1089,7 @@ class ChatSession:
             else:
                 # GGUF chat completion mode
                 response = self.model_wrapper.generate(
+                    messages=self.messages,
                     max_new_tokens=self.config["max_new_tokens"],
                     temperature=self.config["temperature"],
                     top_p=self.config["top_p"],
@@ -1022,6 +1168,11 @@ class ChatSession:
             stops.append("<|assistant_end|>")
             stops.append("<|user_start|>")  # Also stop if model tries to start a new user turn
             stops.append("<|system_start|>")  # Also stop if model tries to start a system block
+        elif self.use_chat_mode:
+            # GGUF chat completion: the template's end-of-turn token terminates
+            # generation. Name-based stops would misfire inside reasoning traces
+            # that quote the conversation (e.g. 'User: "..."').
+            pass
         else:
             # Raw mode - stop on user name patterns
             for name in self.converter.user_names:
@@ -1155,6 +1306,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chat_format", type=str, default=None, 
                        help="Chat format (llama-3, chatml, etc.) - enables chat completion mode")
     parser.add_argument("--tensor_split", type=str, default="auto", help="Tensor split for GGUF")
+    parser.add_argument("--think", type=str, default="compact", choices=["full", "compact"],
+                        help="Thinking-trace display for reasoning GGUF models: 'full' streams the "
+                             "<think> block verbatim, 'compact' shows a [Thinking...] placeholder. "
+                             "Either way the trace is stripped from chat history.")
     
     # Chat arguments
     parser.add_argument("--user", type=str, default="User", help="User name(s)")
@@ -1217,7 +1372,8 @@ def load_model(config: dict, args: argparse.Namespace) -> ModelWrapper:
             n_ctx=n_ctx,
             chat_format=chat_format,
             tensor_split=tensor_split,
-            use_chat_completion=use_chat
+            use_chat_completion=use_chat,
+            think_display=args.think
         )
         
         config["context_len"] = wrapper.get_context_length()
@@ -1283,6 +1439,7 @@ if __name__ == '__main__':
         "context_len": 4096,
         "debug": False,
         "compact": True,
+        "think_display": "compact",
     }
     
     args = parse_args()
@@ -1291,6 +1448,7 @@ if __name__ == '__main__':
     if HAS_LOGGER:
         logger._instance.set_logdir("./logs")
         logger._instance.set_default_logfile("chat_log.txt")
+        logger._instance.no_log = True
         logger._instance.set_rank(0)
 
     if not HAS_LLAMA_CPP:
@@ -1311,6 +1469,7 @@ if __name__ == '__main__':
     config["force_response"] = args.force
     config["context_len"] = args.context_len
     config["max_new_tokens"] = args.gen_size
+    config["think_display"] = args.think
 
     usr_names = [name.strip() for name in args.user.split(",") if name.strip()]
 
@@ -1358,20 +1517,33 @@ if __name__ == '__main__':
             session = ChatSession(model_wrapper, converter, config, use_chat_mode, chat_format=args.chat_format)
             initial_text = session.load_prompt(prompt_path)
 
-            log(f"Loaded: {session.ai_name} (seed: {session.seed})")
+            # Resolve seed BEFORE logging: a -1 draw must be visible for reuse
+            # (put the printed value in the prompt yaml's `seed:` to replay).
+            if session.seed == -1:
+                session.seed = int(np.random.randint(0, 2**31 - 1))
+                log(f"Loaded: {session.ai_name} (seed: {session.seed} — randomized from -1)")
+            else:
+                log(f"Loaded: {session.ai_name} (seed: {session.seed})")
             if HAS_LOGGER:
                 logger.flush()  # Flush after loading prompt to keep things tidy
-                
+
             print(f"\n{initial_text}")
-            
+
             # Set seed (numpy for general use, torch for model sampling via torch.multinomial)
-            if session.seed == -1:
-                session.seed = np.random.randint(0, 2**31 - 1)
             np.random.seed(session.seed)
             if TORCH_LOADED:
                 torch.manual_seed(session.seed)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed(session.seed)
+            # llama.cpp samples with its OWN C-side RNG (init default is a fixed
+            # constant) — torch/np seeding never reaches it. Push the session
+            # seed in explicitly where the binding supports it.
+            if HAS_LLAMA_CPP and isinstance(model_wrapper, GGUFModelWrapper):
+                try:
+                    model_wrapper.model.set_seed(int(session.seed))
+                except AttributeError:
+                    log("Warning: llama_cpp binding lacks set_seed(); GGUF sampling "
+                        "will NOT follow the session seed (fixed library default).")
         except Exception as e:
             log(f"Error loading prompt: {e}")
             continue
@@ -1614,12 +1786,19 @@ if __name__ == '__main__':
                             print(f"/cls    - Clear the screen")
                             print(f"/debug  - Toggle debug mode (show stop reasons) [{config['debug']}]")
                             print(f"/compact - Toggle compact mode (strip newlines) [{config['compact']}]")
+                            print(f"/think  - Toggle thinking display full/compact [{config['think_display']}]")
                             print(f"/raw    - Toggle mara chat format / raw completion mode")
                             print(f"//<str> - Add narrative/OOC text (system message in chat mode)")
                             getting_input = True
                         elif user_response.startswith("/debug"):
                             config["debug"] = not config["debug"]
                             log(f"Debug mode: {config['debug']}")
+                            getting_input = True
+                        elif user_response.startswith("/think"):
+                            config["think_display"] = "full" if config["think_display"] == "compact" else "compact"
+                            if isinstance(session.model_wrapper, GGUFModelWrapper):
+                                session.model_wrapper.think_display = config["think_display"]
+                            log(f"Thinking display: {config['think_display']}")
                             getting_input = True
                         elif user_response.startswith("/compact"):
                             config["compact"] = not config["compact"]
