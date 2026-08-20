@@ -81,6 +81,10 @@ def extract_festival_fields(cfg_path):
         sw = {"enabled": True}
     if mt is True:
         mt = {"enabled": True}
+    if bool(dm.get("enabled", False)) and "bos_token_id" not in dm:
+        print("[warn] config omits doc_attn_mask.bos_token_id — defaulting to 1 "
+              "(SentencePiece BOS; correct for llama-era runs only). If this "
+              "checkpoint trained on a non-llama tree, set bos_token_id in the yaml.")
     return {
         "doc_attn_mask": bool(dm.get("enabled", False)),
         "doc_pos_reset": bool(dm.get("reset_positions", False)),
