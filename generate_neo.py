@@ -1502,13 +1502,21 @@ class Generate(CommandFramework):
         self.run_hella_sweep(log_dir, token_interval, interactive=True)
         return ""
 
-    def _run_hellaswag_for_sweep(self):
+    def _run_hellaswag_for_sweep(self, shard_slots=None, shard_mod=1):
         """
         Run HellaSwag evaluation and return (num_correct, num_total) instead of just printing.
+
+        shard_slots/shard_mod: evaluate only examples whose index % shard_mod is in
+        shard_slots (weighted round-robin sharding for data-parallel workers; the
+        stride pattern keeps difficulty distribution uniform across shards).
         """
         num_correct = 0
         num_total = 0
         all_examples = list(iterate_examples("val", data_dir="./hellaswag/"))
+        num_shards = shard_mod  # >1 means DP child mode (affects progress printing)
+        if shard_mod > 1:
+            slots = set(shard_slots or [0])
+            all_examples = [e for j, e in enumerate(all_examples) if j % shard_mod in slots]
 
         t0 = time.time()
         for i in range(0, len(all_examples), self.eval_batch_size):
@@ -1533,9 +1541,16 @@ class Generate(CommandFramework):
                 eta_str = f"  ETA: {eta_m}m{eta_s:02d}s"
             else:
                 eta_str = ""
-            print(f"\rExample {done}/{len(all_examples)} [{pct:5.1f}%] Acc: {acc:5.2f}%{eta_str}   ", end="")
+            if num_shards > 1:
+                # DP child: parent line-buffers our stdout, so \r rewrites would
+                # arrive as one giant line — emit throttled newline progress instead
+                if done == len(all_examples) or (i // self.eval_batch_size) % 25 == 0:
+                    print(f"Example {done}/{len(all_examples)} [{pct:5.1f}%] Acc: {acc:5.2f}%{eta_str}", flush=True)
+            else:
+                print(f"\rExample {done}/{len(all_examples)} [{pct:5.1f}%] Acc: {acc:5.2f}%{eta_str}   ", end="")
 
-        print("")  # newline
+        if num_shards == 1:
+            print("")  # newline after \r progress
         return num_correct, num_total
 
     def _detect_save_step(self, log_dir):
@@ -1567,27 +1582,26 @@ class Generate(CommandFramework):
 
         return most_common_delta
 
-    def run_hella_sweep(self, log_dir, token_interval, interactive=False):
+    def _plan_hella_sweep(self, log_dir, token_interval):
         """
-        Run HellaSwag sweep (shared implementation for both interactive and CLI usage).
+        Shared sweep planning: which checkpoint steps still need a HellaSwag score.
 
-        Args:
-            log_dir: Directory containing val_log.txt and checkpoints
-            token_interval: Token interval in raw count (e.g., 500_000_000 for 500M)
-            interactive: If True, prompt for confirmation before running
+        Returns (steps_to_evaluate, hella_log_path) where steps_to_evaluate is a
+        list of (step, actual_tokens, target_milestone), or (None, None) on error /
+        nothing to do.
         """
         # Auto-detect save_step from checkpoint files
         save_step = self._detect_save_step(log_dir)
         if save_step is None:
             logger.print_and_log("Error: Could not auto-detect save step (need at least 2 checkpoints)")
-            return
+            return None, None
         logger.print_and_log(f"Auto-detected checkpoint save interval: {save_step} steps")
 
         # Parse val_log.txt to get step -> token mapping
         val_log_path = os.path.join(log_dir, "val_log.txt")
         if not os.path.exists(val_log_path):
             logger.print_and_log(f"Error: val_log.txt not found in {log_dir}")
-            return
+            return None, None
 
         step_to_tokens = {}
         with open(val_log_path, 'r') as f:
@@ -1601,7 +1615,7 @@ class Generate(CommandFramework):
 
         if not step_to_tokens:
             logger.print_and_log("Error: No step/token data found in val_log.txt")
-            return
+            return None, None
 
         logger.print_and_log(f"Parsed {len(step_to_tokens)} entries from val_log.txt")
 
@@ -1672,11 +1686,26 @@ class Generate(CommandFramework):
 
         if not steps_to_evaluate:
             logger.print_and_log("All milestones already evaluated!")
-            return
+            return None, None
 
         logger.print_and_log(f"Will evaluate {len(steps_to_evaluate)} checkpoints")
         for step, tokens, milestone in steps_to_evaluate:
             logger.print_and_log(f"  Step {step}: {tokens/1e6:.1f}M tokens (target: {milestone/1e6:.0f}M)")
+
+        return steps_to_evaluate, hella_log_path
+
+    def run_hella_sweep(self, log_dir, token_interval, interactive=False):
+        """
+        Run HellaSwag sweep (shared implementation for both interactive and CLI usage).
+
+        Args:
+            log_dir: Directory containing val_log.txt and checkpoints
+            token_interval: Token interval in raw count (e.g., 500_000_000 for 500M)
+            interactive: If True, prompt for confirmation before running
+        """
+        steps_to_evaluate, hella_log_path = self._plan_hella_sweep(log_dir, token_interval)
+        if not steps_to_evaluate:
+            return
 
         # Confirm before proceeding (only in interactive mode)
         if interactive:
@@ -1734,6 +1763,172 @@ class Generate(CommandFramework):
         logger.print_and_log(f"Results saved to: {hella_log_path}")
         for step, tokens, accuracy in results:
             logger.print_and_log(f"  Step {step} ({tokens/1e6:.1f}M tokens): {accuracy:.2f}%")
+
+    # ----------------- Data-parallel HellaSwag sweep -----------------
+
+    def _resolve_dp_groups(self, dp_groups, log_dir, steps_to_evaluate):
+        """Resolve --dp_groups into a list of physical-GPU-id lists.
+
+        Explicit form: "0;5,1;6,2" — semicolon-separated groups, comma-separated
+        physical GPU ids, biggest GPU FIRST within a group (the balanced loader
+        fills visible device 0 up to its cap and spills the remainder).
+
+        'auto': estimate loaded model size from the checkpoint file (fp32 on disk
+        -> /2 for half-precision eval) and greedily pack GPUs, SIMULATING
+        neo_common's balanced-shard fill (uniform forced cap of need/n*1.5,
+        sequential spill) so every emitted group is one the loader can satisfy.
+        """
+        if dp_groups != 'auto':
+            return [[int(x) for x in g.split(',') if x.strip()]
+                    for g in dp_groups.split(';') if g.strip()]
+
+        step0 = steps_to_evaluate[0][0]
+        ckpt = os.path.join(log_dir, f"model_step_{step0:06d}.pt")
+        need_gb = os.path.getsize(ckpt) / 1024**3
+        if self.half:
+            need_gb /= 2  # fp32 on disk, bf16 in memory
+
+        mems = [(i, torch.cuda.get_device_properties(i).total_memory / 1024**3)
+                for i in range(torch.cuda.device_count())]
+        mems.sort(key=lambda x: -x[1])
+
+        def feasible(group):
+            if len(group) == 1:
+                # child uses shard_strategy 'none': whole model on the one GPU
+                return need_gb <= group[0][1] - 2.0
+            # Mirror neo_common balanced mode exactly: uniform forced cap of
+            # int(model_gb/n*1.5) GiB, filled sequentially biggest-first
+            cap = int(need_gb / len(group) * 1.5)
+            rem = need_gb
+            for _, m in group:
+                take = min(cap, rem)
+                if take > m - 0.8:  # CUDA context + activations headroom
+                    return False
+                rem -= take
+            return rem <= 0.01
+
+        groups, pool = [], mems[:]
+        while pool:
+            group = [pool.pop(0)]
+            while not feasible(group) and pool:
+                group.append(pool.pop(0))
+            if feasible(group):
+                groups.append([i for i, _ in group])
+            else:
+                break  # remaining GPUs can't host another replica
+        return groups
+
+    def run_hella_sweep_dp(self, log_dir, token_interval, dp_groups, child_args):
+        """Data-parallel HellaSwag sweep.
+
+        For each pending checkpoint: spawn one worker subprocess per GPU group
+        (pinned via CUDA_VISIBLE_DEVICES), each scoring a stride shard of the
+        examples; merge the partial counts into one hellaswag_log.txt line. A
+        step with any failed worker is NOT recorded (the sweep's skip logic
+        re-evaluates it next run).
+        """
+        steps_to_evaluate, hella_log_path = self._plan_hella_sweep(log_dir, token_interval)
+        if not steps_to_evaluate:
+            return
+
+        groups = self._resolve_dp_groups(dp_groups, log_dir, steps_to_evaluate)
+        if not groups:
+            logger.print_and_log("Error: no viable DP GPU groups (model too large per group?)")
+            return
+        n = len(groups)
+        logger.print_and_log(f"DP eval: {n} workers on GPU groups: " +
+                             " | ".join(",".join(map(str, g)) for g in groups))
+
+        results = []
+        for i, (step, tokens, milestone) in enumerate(steps_to_evaluate):
+            checkpoint_path = os.path.join(log_dir, f"model_step_{step:06d}.pt")
+            if not os.path.exists(checkpoint_path):
+                logger.print_and_log(f"[{i+1}/{len(steps_to_evaluate)}] Checkpoint not found: {checkpoint_path}, skipping...")
+                continue
+            logger.print_and_log(f"\n[{i+1}/{len(steps_to_evaluate)}] Evaluating step {step} "
+                                 f"({tokens/1e6:.1f}M tokens) on {n} workers...")
+
+            partials = self._spawn_hella_workers(step, groups, child_args)
+            if partials is None:
+                logger.print_and_log(f"Error evaluating step {step}: worker failure; not recording")
+                continue
+            num_correct = sum(c for c, _ in partials)
+            num_total = sum(t for _, t in partials)
+            accuracy = 100.0 * num_correct / num_total
+            logger.print_and_log(f"Step {step}: {accuracy:.2f}% ({num_correct}/{num_total})")
+            with open(hella_log_path, 'a') as f:
+                f.write(f"{step}, {tokens}, {accuracy:.4f}\n")
+            results.append((step, tokens, accuracy))
+
+        logger.print_and_log(f"\n=== Evaluation Complete ===")
+        logger.print_and_log(f"Results saved to: {hella_log_path}")
+        for step, tokens, accuracy in results:
+            logger.print_and_log(f"  Step {step} ({tokens/1e6:.1f}M tokens): {accuracy:.2f}%")
+
+    def _spawn_hella_workers(self, step, groups, child_args):
+        """One child per GPU group for `step`; returns [(correct, total), ...]
+        in worker order, or None if any worker failed."""
+        import subprocess
+        import threading
+
+        n = len(groups)
+        partials = [None] * n
+        procs = []
+
+        def _pump(idx, proc):
+            for line in proc.stdout:
+                line = line.rstrip('\n')
+                m = re.match(r'HELLA_PARTIAL (\d+) (\d+) (\d+)$', line)
+                if m and int(m.group(1)) == step:
+                    partials[idx] = (int(m.group(2)), int(m.group(3)))
+                elif line.strip():
+                    print(f"[w{idx}] {line}", flush=True)
+
+        # Weighted round-robin shards: single-GPU workers run the whole model at
+        # full speed while multi-GPU groups pipeline layers one GPU at a time
+        # (~3x slower in practice), so give single-GPU groups 3 slots each.
+        weights = [3 if len(g) == 1 else 1 for g in groups]
+        modulus = sum(weights)
+        slot_lists, next_slot = [], 0
+        for w in weights:
+            slot_lists.append(list(range(next_slot, next_slot + w)))
+            next_slot += w
+
+        for idx, group in enumerate(groups):
+            slots = ','.join(map(str, slot_lists[idx]))
+            cmd = [sys.executable, os.path.abspath(__file__),
+                   '--model_path', child_args.model_path,
+                   '--hella_step', str(step),
+                   '--hella_shard', f'{slots}:{modulus}',
+                   '--batch_size', str(child_args.batch_size)]
+            if child_args.full:
+                cmd.append('--full')
+            if child_args.use_keel:
+                cmd.append('--use_keel')
+            for flag in ('tok_kind', 'tok_path', 'special_tokens', 'qk_norm_mode'):
+                v = getattr(child_args, flag, None)
+                if v is not None:
+                    cmd.extend([f'--{flag}', str(v)])
+            env = dict(os.environ)
+            env['CUDA_VISIBLE_DEVICES'] = ','.join(str(g) for g in group)
+            env['NEO_LOGGER_PORT'] = str(29601 + idx)  # avoid rank-0 server port clashes
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env,
+                cwd=os.path.dirname(os.path.abspath(__file__)) or '.')
+            t = threading.Thread(target=_pump, args=(idx, proc), daemon=True)
+            t.start()
+            procs.append((proc, t))
+
+        ok = True
+        for idx, (proc, t) in enumerate(procs):
+            rc = proc.wait()
+            t.join(timeout=10)
+            if rc != 0 or partials[idx] is None:
+                logger.print_and_log(
+                    f"Worker {idx} failed (rc={rc}, partial={'received' if partials[idx] else 'missing'})")
+                ok = False
+        return partials if ok else None
 
     # ----------------------- Coherence sweep -----------------------
 
@@ -2217,6 +2412,14 @@ def parse_args() -> argparse.Namespace:
                         help="Run HellaSwag sweep on checkpoints in --model_path directory (non-interactive mode)")
     parser.add_argument("--token_interval", type=int, default=500,
                         help="Token interval in millions for sweep milestones (default: 500)")
+    parser.add_argument("--dp_groups", type=str, default=None,
+                        help="Data-parallel sweep: 'auto', or explicit GPU worker groups like "
+                             "'0;5,1;6,2' (semicolon-separated groups of comma-separated physical "
+                             "GPU ids, biggest GPU first within a group). Each pending checkpoint's "
+                             "examples are sharded across one worker process per group and the "
+                             "partial scores merged. Requires --hella_sweep.")
+    parser.add_argument("--hella_step", type=int, default=None, help=argparse.SUPPRESS)   # DP child: eval one step
+    parser.add_argument("--hella_shard", type=str, default=None, help=argparse.SUPPRESS)  # DP child: "i:n" shard
 
     # Coherence sweep arguments
     parser.add_argument("--coherence_sweep", action="store_true",
@@ -2289,6 +2492,49 @@ if __name__ == "__main__":
         logger.print_and_log("Error: --model_path is required")
         sys.exit(1)
 
+    # DP child mode: evaluate ONE checkpoint step (a shard of the examples) and
+    # print a machine-readable partial for the parent to merge. Spawned by
+    # run_hella_sweep_dp with CUDA_VISIBLE_DEVICES pinned to this worker's group.
+    if args.hella_step is not None:
+        log_dir = args.model_path
+        if not os.path.isdir(log_dir):
+            logger.print_and_log(f"Error: --model_path must be a directory for --hella_step: {log_dir}")
+            sys.exit(1)
+        # Shard spec "slots:modulus" — e.g. "0,1,2:6" takes examples whose
+        # index % 6 is in {0,1,2} (weighted round-robin; "3:6" = single slot)
+        shard_slots, shard_mod = [0], 1
+        if args.hella_shard:
+            slots_str, mod_str = args.hella_shard.split(':')
+            shard_slots = [int(x) for x in slots_str.split(',')]
+            shard_mod = int(mod_str)
+
+        qk_mode = getattr(args, 'qk_norm_mode', None)
+        if qk_mode is not None and qk_mode.lower() == "none":
+            qk_mode = None
+        n_vis = torch.cuda.device_count()
+
+        myGen = Generate("", preferred_gpu=0)
+        myGen.half = not args.full
+        myGen.eval_batch_size = args.batch_size
+
+        checkpoint_path = os.path.join(log_dir, f"model_step_{args.hella_step:06d}.pt")
+        myGen.model, myGen.enc, myGen.cfg = nc.load_model_and_tokenizer(
+            checkpoint_path,
+            device=myGen.device,
+            half_precision=myGen.half,
+            tok_kind=args.tok_kind,
+            tok_path=args.tok_path,
+            special_tokens=args.special_tokens,
+            shard_strategy=('balanced' if n_vis > 1 else 'none'),
+            preferred_gpu=0,
+            max_memory_per_gpu=None,
+            qk_norm_mode=qk_mode,
+            use_keel=args.use_keel or None
+        )
+        num_correct, num_total = myGen._run_hellaswag_for_sweep(shard_slots, shard_mod)
+        print(f"HELLA_PARTIAL {args.hella_step} {num_correct} {num_total}", flush=True)
+        sys.exit(0)
+
     # Check if running in hella_sweep mode (non-interactive)
     if args.hella_sweep:
         log_dir = args.model_path
@@ -2311,6 +2557,16 @@ if __name__ == "__main__":
                 qk_mode = None
         myGen.qk_norm_mode = qk_mode
         myGen.use_keel = args.use_keel
+
+        # Data-parallel sweep: orchestrate worker subprocesses instead of local eval
+        if args.dp_groups:
+            myGen.run_hella_sweep_dp(
+                log_dir=log_dir,
+                token_interval=args.token_interval * 1_000_000,
+                dp_groups=args.dp_groups,
+                child_args=args
+            )
+            sys.exit(0)
 
         # Run the sweep using the refactored function
         myGen.run_hella_sweep(
