@@ -1582,26 +1582,28 @@ class Generate(CommandFramework):
 
         return most_common_delta
 
-    def _plan_hella_sweep(self, log_dir, token_interval):
-        """
-        Shared sweep planning: which checkpoint steps still need a HellaSwag score.
+    def _plan_milestone_steps(self, log_dir, token_interval, evaluated_steps):
+        """Shared milestone-planning core for checkpoint sweeps.
 
-        Returns (steps_to_evaluate, hella_log_path) where steps_to_evaluate is a
-        list of (step, actual_tokens, target_milestone), or (None, None) on error /
-        nothing to do.
+        Auto-detects the checkpoint save interval, parses val_log.txt for the
+        step->tokens map, walks token milestones, and picks the closest
+        save-step checkpoint for each milestone — skipping steps already in
+        `evaluated_steps` (each sweep mode reads its own results log to build
+        that set).
+
+        Returns a list of (step, actual_tokens, target_milestone), or None on
+        error / nothing to do.
         """
-        # Auto-detect save_step from checkpoint files
         save_step = self._detect_save_step(log_dir)
         if save_step is None:
             logger.print_and_log("Error: Could not auto-detect save step (need at least 2 checkpoints)")
-            return None, None
+            return None
         logger.print_and_log(f"Auto-detected checkpoint save interval: {save_step} steps")
 
-        # Parse val_log.txt to get step -> token mapping
         val_log_path = os.path.join(log_dir, "val_log.txt")
         if not os.path.exists(val_log_path):
             logger.print_and_log(f"Error: val_log.txt not found in {log_dir}")
-            return None, None
+            return None
 
         step_to_tokens = {}
         with open(val_log_path, 'r') as f:
@@ -1609,54 +1611,31 @@ class Generate(CommandFramework):
                 st_match = re.search(r'st:\s*(\d+)', line)
                 tok_match = re.search(r'tok:\s*(\d+)', line)
                 if st_match and tok_match:
-                    step = int(st_match.group(1))
-                    tokens = int(tok_match.group(1))
-                    step_to_tokens[step] = tokens
+                    step_to_tokens[int(st_match.group(1))] = int(tok_match.group(1))
 
         if not step_to_tokens:
             logger.print_and_log("Error: No step/token data found in val_log.txt")
-            return None, None
+            return None
 
         logger.print_and_log(f"Parsed {len(step_to_tokens)} entries from val_log.txt")
-
         max_tokens = max(step_to_tokens.values())
         logger.print_and_log(f"Training range: 0 to {max_tokens/1e9:.2f}B tokens")
 
-        # Check for existing results FIRST (before building evaluation list)
-        hella_log_path = os.path.join(log_dir, "hellaswag_log.txt")
-        evaluated_steps = set()
-        max_evaluated_step = 0
-        if os.path.exists(hella_log_path):
-            with open(hella_log_path, 'r') as f:
-                for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) >= 1:
-                        try:
-                            step = int(parts[0].strip())
-                            evaluated_steps.add(step)
-                            max_evaluated_step = max(max_evaluated_step, step)
-                        except ValueError:
-                            pass
-            logger.print_and_log(f"Found {len(evaluated_steps)} already-evaluated steps (max step: {max_evaluated_step})")
-
-        # Calculate milestones
         milestones = []
         milestone = token_interval
         while milestone <= max_tokens:
             milestones.append(milestone)
             milestone += token_interval
-
         logger.print_and_log(f"Found {len(milestones)} token milestones total")
 
-        # Find closest checkpoint for each milestone
-        # For each milestone, find the best matching step overall. If that step is
-        # already evaluated, the milestone is covered and we skip it. Only include
-        # milestones whose best-match step hasn't been evaluated yet.
+        # For each milestone, the closest save-step checkpoint. An already-
+        # evaluated best-match means the milestone is covered; a step matching
+        # several milestones is evaluated once (first milestone wins).
         steps_to_evaluate = []
+        seen_steps = set()
         for milestone in milestones:
             best_step = None
             best_diff = float('inf')
-
             for step, tokens in step_to_tokens.items():
                 if step % save_step != 0:
                     continue
@@ -1664,35 +1643,42 @@ class Generate(CommandFramework):
                 if diff < best_diff:
                     best_diff = diff
                     best_step = step
-
-            if best_step is None:
+            if best_step is None or best_step in evaluated_steps or best_step in seen_steps:
                 continue
-
-            # If the best matching step was already evaluated, this milestone is covered
-            if best_step in evaluated_steps:
-                continue
-
-            actual_tokens = step_to_tokens[best_step]
-            steps_to_evaluate.append((best_step, actual_tokens, milestone))
-
-        # Remove duplicates
-        seen_steps = set()
-        unique_steps = []
-        for step, actual_tokens, target_milestone in steps_to_evaluate:
-            if step not in seen_steps:
-                seen_steps.add(step)
-                unique_steps.append((step, actual_tokens, target_milestone))
-        steps_to_evaluate = unique_steps
+            seen_steps.add(best_step)
+            steps_to_evaluate.append((best_step, step_to_tokens[best_step], milestone))
 
         if not steps_to_evaluate:
             logger.print_and_log("All milestones already evaluated!")
-            return None, None
+            return None
 
         logger.print_and_log(f"Will evaluate {len(steps_to_evaluate)} checkpoints")
         for step, tokens, milestone in steps_to_evaluate:
             logger.print_and_log(f"  Step {step}: {tokens/1e6:.1f}M tokens (target: {milestone/1e6:.0f}M)")
 
-        return steps_to_evaluate, hella_log_path
+        return steps_to_evaluate
+
+    def _plan_hella_sweep(self, log_dir, token_interval):
+        """Which checkpoint steps still need a HellaSwag score.
+
+        Returns (steps_to_evaluate, hella_log_path), or (None, None) on error /
+        nothing to do.
+        """
+        hella_log_path = os.path.join(log_dir, "hellaswag_log.txt")
+        evaluated_steps = set()
+        if os.path.exists(hella_log_path):
+            with open(hella_log_path, 'r') as f:
+                for line in f:
+                    try:
+                        evaluated_steps.add(int(line.strip().split(',')[0].strip()))
+                    except (ValueError, IndexError):
+                        pass
+            logger.print_and_log(
+                f"Found {len(evaluated_steps)} already-evaluated steps"
+                + (f" (max step: {max(evaluated_steps)})" if evaluated_steps else ""))
+
+        steps = self._plan_milestone_steps(log_dir, token_interval, evaluated_steps)
+        return (steps, hella_log_path) if steps else (None, None)
 
     def run_hella_sweep(self, log_dir, token_interval, interactive=False):
         """
@@ -1766,58 +1752,6 @@ class Generate(CommandFramework):
 
     # ----------------- Data-parallel HellaSwag sweep -----------------
 
-    def _resolve_dp_groups(self, dp_groups, log_dir, steps_to_evaluate):
-        """Resolve --dp_groups into a list of physical-GPU-id lists.
-
-        Explicit form: "0;5,1;6,2" — semicolon-separated groups, comma-separated
-        physical GPU ids, biggest GPU FIRST within a group (the balanced loader
-        fills visible device 0 up to its cap and spills the remainder).
-
-        'auto': estimate loaded model size from the checkpoint file (fp32 on disk
-        -> /2 for half-precision eval) and greedily pack GPUs, SIMULATING
-        neo_common's balanced-shard fill (uniform forced cap of need/n*1.5,
-        sequential spill) so every emitted group is one the loader can satisfy.
-        """
-        if dp_groups != 'auto':
-            return [[int(x) for x in g.split(',') if x.strip()]
-                    for g in dp_groups.split(';') if g.strip()]
-
-        step0 = steps_to_evaluate[0][0]
-        ckpt = os.path.join(log_dir, f"model_step_{step0:06d}.pt")
-        need_gb = os.path.getsize(ckpt) / 1024**3
-        if self.half:
-            need_gb /= 2  # fp32 on disk, bf16 in memory
-
-        mems = [(i, torch.cuda.get_device_properties(i).total_memory / 1024**3)
-                for i in range(torch.cuda.device_count())]
-        mems.sort(key=lambda x: -x[1])
-
-        def feasible(group):
-            if len(group) == 1:
-                # child uses shard_strategy 'none': whole model on the one GPU
-                return need_gb <= group[0][1] - 2.0
-            # Mirror neo_common balanced mode exactly: uniform forced cap of
-            # int(model_gb/n*1.5) GiB, filled sequentially biggest-first
-            cap = int(need_gb / len(group) * 1.5)
-            rem = need_gb
-            for _, m in group:
-                take = min(cap, rem)
-                if take > m - 0.8:  # CUDA context + activations headroom
-                    return False
-                rem -= take
-            return rem <= 0.01
-
-        groups, pool = [], mems[:]
-        while pool:
-            group = [pool.pop(0)]
-            while not feasible(group) and pool:
-                group.append(pool.pop(0))
-            if feasible(group):
-                groups.append([i for i, _ in group])
-            else:
-                break  # remaining GPUs can't host another replica
-        return groups
-
     def run_hella_sweep_dp(self, log_dir, token_interval, dp_groups, child_args):
         """Data-parallel HellaSwag sweep.
 
@@ -1827,11 +1761,15 @@ class Generate(CommandFramework):
         step with any failed worker is NOT recorded (the sweep's skip logic
         re-evaluates it next run).
         """
+        import dp_runner
+
         steps_to_evaluate, hella_log_path = self._plan_hella_sweep(log_dir, token_interval)
         if not steps_to_evaluate:
             return
 
-        groups = self._resolve_dp_groups(dp_groups, log_dir, steps_to_evaluate)
+        ckpt0 = os.path.join(log_dir, f"model_step_{steps_to_evaluate[0][0]:06d}.pt")
+        need_gb = dp_runner.model_need_gb(ckpt0, half_precision=self.half)
+        groups = dp_runner.resolve_groups(dp_groups, need_gb)
         if not groups:
             logger.print_and_log("Error: no viable DP GPU groups (model too large per group?)")
             return
@@ -1866,27 +1804,14 @@ class Generate(CommandFramework):
             logger.print_and_log(f"  Step {step} ({tokens/1e6:.1f}M tokens): {accuracy:.2f}%")
 
     def _spawn_hella_workers(self, step, groups, child_args):
-        """One child per GPU group for `step`; returns [(correct, total), ...]
-        in worker order, or None if any worker failed."""
-        import subprocess
-        import threading
+        """Gang-run one child per GPU group for `step` via dp_runner; returns
+        [(correct, total), ...] in worker order, or None if any worker failed.
 
-        n = len(groups)
-        partials = [None] * n
-        procs = []
+        Weighted round-robin shards: single-GPU workers score batched examples
+        ~3x faster than pipeline groups, so they get 3 slots each.
+        """
+        import dp_runner
 
-        def _pump(idx, proc):
-            for line in proc.stdout:
-                line = line.rstrip('\n')
-                m = re.match(r'HELLA_PARTIAL (\d+) (\d+) (\d+)$', line)
-                if m and int(m.group(1)) == step:
-                    partials[idx] = (int(m.group(2)), int(m.group(3)))
-                elif line.strip():
-                    print(f"[w{idx}] {line}", flush=True)
-
-        # Weighted round-robin shards: single-GPU workers run the whole model at
-        # full speed while multi-GPU groups pipeline layers one GPU at a time
-        # (~3x slower in practice), so give single-GPU groups 3 slots each.
         weights = [3 if len(g) == 1 else 1 for g in groups]
         modulus = sum(weights)
         slot_lists, next_slot = [], 0
@@ -1894,8 +1819,8 @@ class Generate(CommandFramework):
             slot_lists.append(list(range(next_slot, next_slot + w)))
             next_slot += w
 
-        for idx, group in enumerate(groups):
-            slots = ','.join(map(str, slot_lists[idx]))
+        def make_cmd(job, worker_idx, group):
+            slots = ','.join(map(str, slot_lists[worker_idx]))
             cmd = [sys.executable, os.path.abspath(__file__),
                    '--model_path', child_args.model_path,
                    '--hella_step', str(step),
@@ -1909,24 +1834,26 @@ class Generate(CommandFramework):
                 v = getattr(child_args, flag, None)
                 if v is not None:
                     cmd.extend([f'--{flag}', str(v)])
-            env = dict(os.environ)
-            env['CUDA_VISIBLE_DEVICES'] = ','.join(str(g) for g in group)
-            env['NEO_LOGGER_PORT'] = str(29601 + idx)  # avoid rank-0 server port clashes
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1, env=env,
-                cwd=os.path.dirname(os.path.abspath(__file__)) or '.')
-            t = threading.Thread(target=_pump, args=(idx, proc), daemon=True)
-            t.start()
-            procs.append((proc, t))
+            return cmd
 
+        pool = dp_runner.WorkerPool(
+            groups, make_cmd, capture_re=r'HELLA_PARTIAL (\d+) (\d+) (\d+)$',
+            cwd=os.path.dirname(os.path.abspath(__file__)) or '.',
+            log=logger.print_and_log)
+        jobs = [{'group_idx': idx} for idx in range(len(groups))]
+        pool_results = pool.run(jobs)
+
+        partials = [None] * len(groups)
         ok = True
-        for idx, (proc, t) in enumerate(procs):
-            rc = proc.wait()
-            t.join(timeout=10)
-            if rc != 0 or partials[idx] is None:
+        for res in pool_results:
+            widx = res.worker_idx
+            m = next((c for c in res.captures if int(c.group(1)) == step), None)
+            if res.ok and m:
+                partials[widx] = (int(m.group(2)), int(m.group(3)))
+            else:
                 logger.print_and_log(
-                    f"Worker {idx} failed (rc={rc}, partial={'received' if partials[idx] else 'missing'})")
+                    f"Worker {widx} failed (rc={res.returncode}, "
+                    f"partial={'received' if m else 'missing'})")
                 ok = False
         return partials if ok else None
 
@@ -2016,6 +1943,137 @@ class Generate(CommandFramework):
         aggregate = cm.aggregate([p["metrics"] for p in per_prompt])
         return aggregate, per_prompt
 
+    def _plan_coherence_sweep(self, log_dir, token_interval, prompts_path):
+        """Which checkpoint steps still need a coherence record.
+
+        Returns (steps_to_evaluate, coh_log_path, prompts, bank_version), or
+        (None, None, None, None) on error / nothing to do. Planning itself is
+        shared with the hella sweep (_plan_milestone_steps); this wrapper only
+        contributes the coherence results-log reader and the prompt bank.
+        """
+        coh_log_path = os.path.join(log_dir, "coherence_log.jsonl")
+        evaluated_steps = set()
+        if os.path.exists(coh_log_path):
+            with open(coh_log_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        evaluated_steps.add(int(json.loads(line)["step"]))
+                    except Exception:
+                        pass
+            logger.print_and_log(f"Found {len(evaluated_steps)} already-evaluated steps")
+
+        steps = self._plan_milestone_steps(log_dir, token_interval, evaluated_steps)
+        if not steps:
+            return None, None, None, None
+
+        if not os.path.isfile(prompts_path):
+            logger.print_and_log(f"Error: prompt bank not found: {prompts_path}")
+            return None, None, None, None
+        with open(prompts_path, 'r', encoding='utf-8') as f:
+            prompt_bank = json.load(f)
+        prompts = prompt_bank["prompts"]
+        bank_version = prompt_bank.get("version", None)
+        logger.print_and_log(f"Loaded {len(prompts)} prompts from {prompts_path} (version {bank_version})")
+
+        return steps, coh_log_path, prompts, bank_version
+
+    def run_coherence_sweep_dp(self, log_dir, token_interval, dp_groups, child_args,
+                               gen_size=512, prompts_path="./coherence_prompts.json",
+                               temperature=0.7, top_p=0.9, sweep_seed=42):
+        """Data-parallel coherence sweep: whole checkpoints sharded across GPU
+        groups (each step's fixed-seed prompt set stays on one worker, so
+        per-step results are identical to the sequential sweep). Children write
+        their record to a temp file; the parent owns coherence_log.jsonl —
+        appends in step order and runs redaction once at the end.
+
+        Generation is per-token-overhead-bound (measured ~5 tok/s on a solo
+        4080 vs ~4.8 on a 2-GPU pipeline pair), so all groups are treated as
+        equal-speed workers (slow_speed_ratio=1), unlike batched scoring.
+        """
+        import dp_runner
+
+        plan = self._plan_coherence_sweep(log_dir, token_interval, prompts_path)
+        steps_to_evaluate, coh_log_path, prompts, bank_version = plan
+        if not steps_to_evaluate:
+            return
+
+        ckpt0 = os.path.join(log_dir, f"model_step_{steps_to_evaluate[0][0]:06d}.pt")
+        need_gb = dp_runner.model_need_gb(ckpt0, half_precision=self.half)
+        groups = dp_runner.resolve_groups(dp_groups, need_gb)
+        if not groups:
+            logger.print_and_log("Error: no viable DP GPU groups (model too large per group?)")
+            return
+        logger.print_and_log(f"DP coherence eval: {len(groups)} worker slots on GPU groups: " +
+                             " | ".join(",".join(map(str, g)) for g in groups))
+
+        out_dir = os.path.join(log_dir, ".coherence_dp_tmp")
+        os.makedirs(out_dir, exist_ok=True)
+
+        jobs = [{'step': step, 'tokens': tokens, 'milestone': milestone,
+                 'out': os.path.join(out_dir, f"coherence_step_{step}.json")}
+                for step, tokens, milestone in steps_to_evaluate]
+
+        def make_cmd(job, worker_idx, group):
+            cmd = [sys.executable, os.path.abspath(__file__),
+                   '--model_path', log_dir,
+                   '--coherence_step', str(job['step']),
+                   '--coherence_out', job['out'],
+                   '--coherence_gen_size', str(gen_size),
+                   '--coherence_temp', str(temperature),
+                   '--coherence_top_p', str(top_p),
+                   '--coherence_seed', str(sweep_seed),
+                   '--coherence_prompts', prompts_path]
+            if child_args.full:
+                cmd.append('--full')
+            if child_args.use_keel:
+                cmd.append('--use_keel')
+            for flag in ('tok_kind', 'tok_path', 'special_tokens', 'qk_norm_mode'):
+                v = getattr(child_args, flag, None)
+                if v is not None:
+                    cmd.extend([f'--{flag}', str(v)])
+            return cmd
+
+        pool = dp_runner.WorkerPool(
+            groups, make_cmd, capture_re=r'COHERENCE_RESULT (\d+) (.+)$',
+            cwd=os.path.dirname(os.path.abspath(__file__)) or '.',
+            log=logger.print_and_log, slow_speed_ratio=1)
+        results = pool.run(jobs)
+
+        # Parent-owned log: append successful records in step order
+        appended = 0
+        for res in sorted((r for r in results if r), key=lambda r: r.job['step']):
+            if not res.ok:
+                logger.print_and_log(f"Step {res.job['step']}: worker failed; not recording")
+                continue
+            try:
+                with open(res.job['out'], 'r', encoding='utf-8') as f:
+                    record = json.load(f)
+                record['milestone'] = res.job['milestone']
+                with open(coh_log_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(record) + "\n")
+                os.remove(res.job['out'])
+                a = record.get('aggregate', {})
+                logger.print_and_log(
+                    f"Step {res.job['step']}: "
+                    f"nonword={(a.get('nonword_rate') or 0):.4f}  "
+                    f"new_ent_med={(a.get('new_entities_introduced_median') or 0):.1f}  "
+                    f"xspan={(a.get('cross_span_entity') or 0):.3f}")
+                appended += 1
+            except Exception as e:
+                logger.print_and_log(f"Step {res.job['step']}: failed to merge record: {e}")
+
+        logger.print_and_log(f"\n=== Coherence sweep complete: {appended}/{len(jobs)} recorded ===")
+        if appended:
+            try:
+                from pathlib import Path as _Path
+                redacted_path, n_recs, _ = _redact_coherence_log(_Path(coh_log_path))
+                logger.print_and_log(f"Redacted log written to: {redacted_path}  ({n_recs} record(s))")
+            except Exception as e:
+                logger.print_and_log(f"Warning: failed to write redacted log: {e}")
+
     def run_coherence_sweep(self, log_dir, token_interval, gen_size=512,
                             prompts_path="./coherence_prompts.json",
                             temperature=0.7, top_p=0.9, sweep_seed=42,
@@ -2026,93 +2084,10 @@ class Generate(CommandFramework):
         parses val_log.txt for step->tokens, walks token milestones, skips
         steps already in coherence_log.jsonl.
         """
-        # Save step
-        save_step = self._detect_save_step(log_dir)
-        if save_step is None:
-            logger.print_and_log("Error: Could not auto-detect save step (need at least 2 checkpoints)")
-            return
-        logger.print_and_log(f"Auto-detected checkpoint save interval: {save_step} steps")
-
-        # Token map from val_log.txt
-        val_log_path = os.path.join(log_dir, "val_log.txt")
-        if not os.path.exists(val_log_path):
-            logger.print_and_log(f"Error: val_log.txt not found in {log_dir}")
-            return
-
-        step_to_tokens = {}
-        with open(val_log_path, 'r') as f:
-            for line in f:
-                st_match = re.search(r'st:\s*(\d+)', line)
-                tok_match = re.search(r'tok:\s*(\d+)', line)
-                if st_match and tok_match:
-                    step_to_tokens[int(st_match.group(1))] = int(tok_match.group(1))
-
-        if not step_to_tokens:
-            logger.print_and_log("Error: No step/token data found in val_log.txt")
-            return
-
-        max_tokens = max(step_to_tokens.values())
-        logger.print_and_log(f"Parsed {len(step_to_tokens)} entries from val_log.txt")
-        logger.print_and_log(f"Training range: 0 to {max_tokens/1e9:.2f}B tokens")
-
-        # Prompt bank
-        if not os.path.isfile(prompts_path):
-            logger.print_and_log(f"Error: prompt bank not found: {prompts_path}")
-            return
-        with open(prompts_path, 'r', encoding='utf-8') as f:
-            prompt_bank = json.load(f)
-        prompts = prompt_bank["prompts"]
-        bank_version = prompt_bank.get("version", None)
-        logger.print_and_log(f"Loaded {len(prompts)} prompts from {prompts_path} (version {bank_version})")
-
-        # Existing results
-        coh_log_path = os.path.join(log_dir, "coherence_log.jsonl")
-        evaluated_steps = set()
-        if os.path.exists(coh_log_path):
-            with open(coh_log_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                        evaluated_steps.add(int(rec["step"]))
-                    except Exception:
-                        pass
-            logger.print_and_log(f"Found {len(evaluated_steps)} already-evaluated steps")
-
-        # Milestone → closest save-step checkpoint
-        milestones = []
-        m = token_interval
-        while m <= max_tokens:
-            milestones.append(m)
-            m += token_interval
-        logger.print_and_log(f"Found {len(milestones)} token milestones total")
-
-        steps_to_evaluate = []
-        seen_steps = set()
-        for milestone in milestones:
-            best_step = None
-            best_diff = float('inf')
-            for step, tokens in step_to_tokens.items():
-                if step % save_step != 0:
-                    continue
-                diff = abs(tokens - milestone)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_step = step
-            if best_step is None or best_step in evaluated_steps or best_step in seen_steps:
-                continue
-            seen_steps.add(best_step)
-            steps_to_evaluate.append((best_step, step_to_tokens[best_step], milestone))
-
+        plan = self._plan_coherence_sweep(log_dir, token_interval, prompts_path)
+        steps_to_evaluate, coh_log_path, prompts, bank_version = plan
         if not steps_to_evaluate:
-            logger.print_and_log("All milestones already evaluated!")
             return
-
-        logger.print_and_log(f"Will evaluate {len(steps_to_evaluate)} checkpoints")
-        for step, tokens, milestone in steps_to_evaluate:
-            logger.print_and_log(f"  Step {step}: {tokens/1e6:.1f}M tokens (target: {milestone/1e6:.0f}M)")
 
         if interactive:
             confirm = input("\nProceed with evaluation? (y/N): ")
@@ -2226,7 +2201,7 @@ class Generate(CommandFramework):
         except Exception as e:
             logger.print_and_log(f"Warning: failed to write redacted log: {e}")
 
-    def run_coherence_step(self, log_dir, step, gen_size=512,
+    def run_coherence_step(self, log_dir, step, gen_size=512, out_path=None,
                            prompts_path="./coherence_prompts.json",
                            temperature=0.7, top_p=0.9, sweep_seed=42,
                            force=False):
@@ -2334,6 +2309,14 @@ class Generate(CommandFramework):
             "aggregate": aggregate,
             "per_prompt": per_prompt,
         }
+        if out_path:
+            # DP-child mode: hand the record to the orchestrating parent, which
+            # owns coherence_log.jsonl (serialized appends) and runs redaction
+            with open(out_path, 'w', encoding='utf-8') as f:
+                json.dump(record, f)
+            print(f"COHERENCE_RESULT {step} {out_path}", flush=True)
+            return
+
         with open(coh_log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(record) + "\n")
 
@@ -2415,11 +2398,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dp_groups", type=str, default=None,
                         help="Data-parallel sweep: 'auto', or explicit GPU worker groups like "
                              "'0;5,1;6,2' (semicolon-separated groups of comma-separated physical "
-                             "GPU ids, biggest GPU first within a group). Each pending checkpoint's "
-                             "examples are sharded across one worker process per group and the "
-                             "partial scores merged. Requires --hella_sweep.")
+                             "GPU ids, biggest GPU first within a group). With --hella_sweep, "
+                             "examples are sharded across workers per checkpoint; with "
+                             "--coherence_sweep, whole checkpoints are distributed across workers "
+                             "(per-step results identical to sequential).")
     parser.add_argument("--hella_step", type=int, default=None, help=argparse.SUPPRESS)   # DP child: eval one step
     parser.add_argument("--hella_shard", type=str, default=None, help=argparse.SUPPRESS)  # DP child: "i:n" shard
+    parser.add_argument("--coherence_out", type=str, default=None, help=argparse.SUPPRESS)  # DP child: record file
 
     # Coherence sweep arguments
     parser.add_argument("--coherence_sweep", action="store_true",
@@ -2598,6 +2583,20 @@ if __name__ == "__main__":
         myGen.use_keel = args.use_keel
         myGen.special_tokens = args.special_tokens
 
+        if args.dp_groups:
+            myGen.run_coherence_sweep_dp(
+                log_dir=log_dir,
+                token_interval=args.token_interval * 1_000_000,
+                dp_groups=args.dp_groups,
+                child_args=args,
+                gen_size=args.coherence_gen_size,
+                prompts_path=args.coherence_prompts,
+                temperature=args.coherence_temp,
+                top_p=args.coherence_top_p,
+                sweep_seed=args.coherence_seed,
+            )
+            sys.exit(0)
+
         myGen.run_coherence_sweep(
             log_dir=log_dir,
             token_interval=args.token_interval * 1_000_000,
@@ -2616,12 +2615,19 @@ if __name__ == "__main__":
             logger.print_and_log(f"Error: --model_path must be a directory for --coherence_step: {log_dir}")
             sys.exit(1)
 
-        myGen = Generate("", preferred_gpu=args.gpu)
+        if args.coherence_out:
+            # DP child: pinned via CUDA_VISIBLE_DEVICES by the orchestrating
+            # parent — load for whatever GPUs we can see
+            import dp_runner
+            myGen = Generate("", preferred_gpu=0)
+            myGen.shard_strategy = dp_runner.child_shard_strategy()
+        else:
+            myGen = Generate("", preferred_gpu=args.gpu)
+            myGen.shard_strategy = args.shard_strategy
         myGen.half = not args.full
         myGen.eval_batch_size = args.batch_size
         myGen.tok_kind = args.tok_kind
         myGen.tok_path = args.tok_path
-        myGen.shard_strategy = args.shard_strategy
         myGen.max_memory = args.max_memory
         qk_mode = getattr(args, 'qk_norm_mode', None)
         if qk_mode is not None:
@@ -2636,6 +2642,7 @@ if __name__ == "__main__":
             log_dir=log_dir,
             step=args.coherence_step,
             gen_size=args.coherence_gen_size,
+            out_path=args.coherence_out,
             prompts_path=args.coherence_prompts,
             temperature=args.coherence_temp,
             top_p=args.coherence_top_p,

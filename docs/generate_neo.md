@@ -39,14 +39,14 @@ Inside the interactive REPL, type `help` for commands. Notable ones: `prompt` / 
 | `--tok_path` | None (auto) | Tokenizer files path; auto-detected from checkpoint if omitted. |
 | `--special_tokens` | None (auto) | Path to special-tokens JSON (needed for chat-format generation). |
 | `--batch_size` | `16` | Batch size for evaluations. |
-| `--gpu` | None | GPU index (`-1` = last). |
+| `--gpu` | None | GPU index (`-1` = last). Unset = auto-pick the GPU with the most free memory (`neo_common.detect_device`). |
 | `--shard_strategy` | `none` | `auto` / `balanced` / `none` (Accelerate multi-GPU sharding). |
 | `--max_memory` | None | Per-GPU memory cap when sharding, e.g. `14GiB`. |
 | `--qk_norm_mode` | None | `none` / `before_rope` / `after_rope_legacy` / `after_rope_fixed`. |
 | `--use_keel` | off | Force-enable KEEL (Highway-style Post-LN) when the checkpoint config omits it. |
 | `--hella_sweep` | off | Non-interactive HellaSwag sweep over checkpoints in the dir; uses `--token_interval`. |
 | `--token_interval` | `500` | Sweep milestone spacing in millions of tokens. |
-| `--dp_groups` | None | Data-parallel sweep (with `--hella_sweep`): `auto`, or explicit GPU worker groups like `0;5,1;6,2` (`;` between groups, `,` within, biggest GPU first in a group). Spawns one worker subprocess per group (`CUDA_VISIBLE_DEVICES`-pinned; multi-GPU groups use balanced sharding), shards the examples across workers, merges partial scores into one log line. `auto` sizes groups from the checkpoint file size and per-GPU VRAM. A step with any failed worker is not recorded and re-evaluates next run. Host RAM must fit (workers × on-disk checkpoint size) during concurrent loads. |
+| `--dp_groups` | None | Data-parallel sweep (with `--hella_sweep` or `--coherence_sweep`): `auto`, or explicit GPU worker groups like `0;5,1;6,2` (`;` between groups, `,` within, biggest GPU first in a group). One worker subprocess per group (`CUDA_VISIBLE_DEVICES`-pinned; multi-GPU groups use balanced sharding). Hella shards *examples* across workers (weighted 3:1 toward single-GPU groups — batched scoring is compute-bound) and merges raw counts into one log line; coherence distributes *whole checkpoints* (fixed-seed trajectories stay together → per-step results identical to sequential; all groups weighted equally — single-stream generation is per-token-bound, pairs run ~1x). The parent owns the results log in both modes. `auto` sizes groups from checkpoint file size + per-GPU VRAM (see `dp_runner.py`). Failed-worker steps are not recorded and re-evaluate next run. Host RAM must fit (workers × on-disk checkpoint size) during concurrent loads. |
 | `--coherence_sweep` | off | Non-interactive coherence-metric sweep over checkpoints. |
 | `--coherence_step N` | None | One-off coherence eval on a single step (append to `coherence_log.jsonl`). |
 | `--coherence_force` | off | Re-evaluate a step already present in the coherence log. |
